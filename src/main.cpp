@@ -79,21 +79,52 @@ void switchPage(int newIndex) {
     pages[currentPage]->onShow();
 }
 
+enum class PageId { CLOCK, FORECAST, SOLAR, TESLA, HVAC, UPTIME, SETTINGS };
+
+// The swipe/tap order. Reorder this list to change the order pages appear
+// in -- that's the whole mechanism, no other code needs to change. Entries
+// for an integration you haven't configured in secrets.h are skipped
+// automatically (see buildPageList()), so it's safe to leave all seven
+// listed regardless of which ones apply to you.
+constexpr PageId PAGE_ORDER[] = {
+    PageId::CLOCK, PageId::FORECAST, PageId::SOLAR, PageId::TESLA, PageId::HVAC, PageId::UPTIME, PageId::SETTINGS,
+};
+
 void buildPageList() {
     numPages = 0;
-    pages[numPages++] = &clockWeatherPage;
-    if (haConfigured()) {
-        pages[numPages++] = &solarPage;
+    for (PageId id : PAGE_ORDER) {
+        switch (id) {
+            case PageId::CLOCK:
+                pages[numPages++] = &clockWeatherPage;
+                break;
+            case PageId::FORECAST:
+                pages[numPages++] = &forecastPage;
+                break;
+            case PageId::SOLAR:
+                if (haConfigured()) {
+                    pages[numPages++] = &solarPage;
+                }
+                break;
+            case PageId::TESLA:
+                if (hubitatConfigured()) {
+                    pages[numPages++] = &teslaPage;
+                }
+                break;
+            case PageId::HVAC:
+                if (hubitatConfigured()) {
+                    pages[numPages++] = &hvacPage;
+                }
+                break;
+            case PageId::UPTIME:
+                if (UptimeKumaManager::configured()) {
+                    pages[numPages++] = &uptimePage;
+                }
+                break;
+            case PageId::SETTINGS:
+                pages[numPages++] = &settingsPage;
+                break;
+        }
     }
-    if (hubitatConfigured()) {
-        pages[numPages++] = &teslaPage;
-        pages[numPages++] = &hvacPage;
-    }
-    if (UptimeKumaManager::configured()) {
-        pages[numPages++] = &uptimePage;
-    }
-    pages[numPages++] = &forecastPage;
-    pages[numPages++] = &settingsPage;
 }
 
 // Runs on the other core so a slow HTTP fetch never blocks touch polling or
@@ -146,7 +177,7 @@ void setup() {
     ledcAttach(BACKLIGHT_PIN, 20000, 8);
     ledcWrite(BACKLIGHT_PIN, BACKLIGHT_FULL_DUTY);
 
-    touch.begin(flipped);
+    touch.begin();
     if (!touch.isCalibrated()) {
         // First boot on this unit (or NVS was erased) -- run the same
         // calibration flow the Settings page's "Recalibrate Touch" button
@@ -163,7 +194,7 @@ void setup() {
     forecastPage.begin(tft, weatherManager);
     solarPage.begin(tft, homePowerManager);
     teslaPage.begin(tft, teslaManager);
-    hvacPage.begin(tft, hvacZonesManager, beeper);
+    hvacPage.begin(tft, hvacZonesManager, beeper, weatherManager);
     uptimePage.begin(tft, uptimeKumaManager);
     settingsPage.begin(tft, touch, beeper);
 
@@ -238,9 +269,10 @@ void loop() {
     TouchEvent ev = touch.poll();
     if (ev.tapped) {
         constexpr int NAV_EDGE = 24;
-        if (ev.y < NAV_EDGE) {
+        bool navAllowed = !pages[currentPage]->blocksPageNav();
+        if (navAllowed && ev.y < NAV_EDGE) {
             switchPage(currentPage - 1);
-        } else if (ev.y > 240 - NAV_EDGE) {
+        } else if (navAllowed && ev.y > 240 - NAV_EDGE) {
             switchPage(currentPage + 1);
         } else {
             pages[currentPage]->onTap(ev.x, ev.y);

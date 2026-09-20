@@ -12,31 +12,37 @@ get a distinct two-note chime instead, since those actuate a real unit. The
 onboard RGB LED doubles as an at-a-glance status light (see "Status LED"
 below).
 
-Pages, in order (some are skipped entirely if you haven't configured that
-integration -- see Setup):
+Pages, in default order (some are skipped entirely if you haven't
+configured that integration -- see Setup):
 
 1. **Clock & weather** — large clock, date, current local weather, and (if
    Home Assistant is configured) a house battery %/load W status row.
    Always present.
-2. **Solar** — current + today's production, battery level, house load, grid
+2. **5-Day Forecast** — one row per day with a hand-drawn condition icon,
+   hi/lo temps, and precipitation chance. Always present.
+3. **Solar** — current + today's production, battery level, house load, grid
    import/export, battery charge/discharge (EG4 FlexBoss21 via Home
    Assistant). Only shown if `HA_BASE_URL` is set.
-3. **Tesla** — per-vehicle battery %, inside/outside temp, lock state, and
+4. **Tesla** — per-vehicle battery %, inside/outside temp, lock state, and
    online status (via Hubitat's TeslaMate-driven devices). Only shown if
    `HUBITAT_BASE_URL` is set.
-4. **HVAC** — each zone's mode/temp/setpoint. Tap a zone row to open a
+5. **HVAC** — each zone's mode/temp/setpoint. Tap a zone row to open a
    control screen for it (mode, setpoint +/-, fan-mode cycle), with a Back
    button to return to the list. This actuates real thermostat units via
    Hubitat's Maker API — there's no confirmation step before a button press
    takes effect. Only shown if `HUBITAT_BASE_URL` is set.
-5. **System Status** — Uptime Kuma up/down count, with a happy checkmark
+6. **System Status** — Uptime Kuma up/down count, with a happy checkmark
    when everything's up or a list of what's down. Only shown if
    `UPTIME_KUMA_BASE_URL` is set.
-6. **5-Day Forecast** — one row per day with a hand-drawn condition icon,
-   hi/lo temps, and precipitation chance. Always present.
 7. **Settings** — recalibrate touch, flip the display 180 degrees, and
    adjust night-mode dimming level and beep volume, all live, all persisted
    to flash (NVS). Always present.
+
+**To change the order**, edit the `PAGE_ORDER` array near the top of
+`src/main.cpp` and reflash -- it's a plain list of page IDs read
+top-to-bottom, so reordering is just reordering that list. An entry for an
+integration you haven't configured is skipped automatically, so it's fine
+to leave all seven listed regardless of which ones apply to you.
 
 Board confirmed via `esptool`: ESP32-D0WD-V3, 4MB flash, CH340 USB-serial
 bridge. 2.8", resistive-touch, dual-USB-port CYD variant. Developed and

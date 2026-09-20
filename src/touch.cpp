@@ -37,8 +37,7 @@ constexpr CalPoint POINTS[5] = {
 XPT2046_Touchscreen ts(TOUCH_CS, TOUCH_IRQ);
 }  // namespace
 
-void TouchTap::begin(bool flippedIn) {
-    flipped = flippedIn;
+void TouchTap::begin() {
     // TFT_eSPI drives the display bus directly at the register level, not
     // through the Arduino global SPI object -- so it's free to repurpose
     // here for the touch controller's separate bus. XPT2046_Touchscreen's
@@ -98,13 +97,23 @@ void TouchTap::calibrate(TFT_eSPI &tft) {
         while (!ts.touched()) {
             delay(10);
         }
-        TS_Point p = ts.getPoint();
-        rawX[i] = p.x;
-        rawY[i] = p.y;
-
+        // Average readings for as long as the point is held, rather than
+        // taking a single sample right at first contact -- that instant is
+        // the noisiest part of a resistive panel's reading, and a bad
+        // single sample here would bake real inaccuracy into every tap
+        // until the next recalibration.
+        long sumX = 0, sumY = 0;
+        int samples = 0;
         while (ts.touched()) {
-            delay(10);
+            TS_Point p = ts.getPoint();
+            sumX += p.x;
+            sumY += p.y;
+            samples++;
+            delay(5);
         }
+        rawX[i] = samples > 0 ? static_cast<int>(sumX / samples) : 0;
+        rawY[i] = samples > 0 ? static_cast<int>(sumY / samples) : 0;
+
         delay(300);  // debounce before showing the next target
     }
 
@@ -134,27 +143,28 @@ TouchEvent TouchTap::poll() {
     TouchEvent ev;
     bool touched = ts.touched();
 
-    if (touched && !wasTouched) {
+    if (touched) {
         TS_Point p = ts.getPoint();
-        downRawX = p.x;
-        downRawY = p.y;
+        sumRawX += p.x;
+        sumRawY += p.y;
+        sampleCount++;
+    }
+
+    if (touched && !wasTouched) {
         touchDownMs = millis();
     } else if (!touched && wasTouched) {
         uint32_t heldMs = millis() - touchDownMs;
         wasTouched = touched;
-        if (heldMs <= MAX_TAP_MS) {
-            int screenX = mapRawToScreen(downRawX, rawXMin, rawXMax, 319);
-            int screenY = mapRawToScreen(downRawY, rawYMin, rawYMax, 239);
-            if (flipped) {
-                // Rotating the display 180 degrees doesn't move the touch
-                // panel, so mirror both axes to match what's now on screen.
-                screenX = 319 - screenX;
-                screenY = 239 - screenY;
-            }
+        if (heldMs <= MAX_TAP_MS && sampleCount > 0) {
+            int rawX = sumRawX / sampleCount;
+            int rawY = sumRawY / sampleCount;
             ev.tapped = true;
-            ev.x = screenX;
-            ev.y = screenY;
+            ev.x = mapRawToScreen(rawX, rawXMin, rawXMax, 319);
+            ev.y = mapRawToScreen(rawY, rawYMin, rawYMax, 239);
         }
+        sumRawX = 0;
+        sumRawY = 0;
+        sampleCount = 0;
         return ev;
     }
 

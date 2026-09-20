@@ -3,18 +3,33 @@
 namespace {
 constexpr uint32_t REDRAW_INTERVAL_MS = 1000;
 constexpr int ROW_Y0 = 32;
-constexpr int ROW_H = 40;
+// 36, not 40 -- at 40, the last row (5 zones * 40 + 32 = 232) extended past
+// y=216, main.cpp's bottom page-nav boundary, so a tap on the lower part of
+// the last row silently changed pages instead of opening that zone. 36
+// keeps all rows (32..212) clear of that boundary.
+constexpr int ROW_H = 36;
 
-// Detail-view layout. main.cpp reserves y<24 and y>216 globally for
-// top/bottom page navigation before onTap() ever runs, so every button
-// here stays inside that 24..216 band -- a button straddling the boundary
-// would have its edge silently stolen by page-nav instead of registering.
+// Detail-view layout. This view disables main.cpp's top/bottom
+// page-navigation edge strips entirely (see HvacPage::blocksPageNav()) --
+// Back is the only way out -- so it's free to use the full 0..240 height,
+// including what would otherwise be dead/nav-only space at the very
+// bottom. That reclaimed space is a footer showing outside temperature,
+// which also puts a real target where an accidental low tap used to
+// silently flip to the next page instead of hitting Fan.
 constexpr int BACK_X = 0, BACK_Y = 24, BACK_W = 90, BACK_H = 30;
+// Back's actual tap target is bigger than its drawn button and reaches all
+// the way to the top edge -- that corner is otherwise empty (the zone-name
+// title is centered) and page-nav is fully disabled on this screen anyway
+// (see blocksPageNav()), so there's no downside to being generous here. A
+// resistive panel's calibration is typically least accurate right at the
+// extreme corners, and this is exactly that corner.
+constexpr int BACK_HIT_X = 0, BACK_HIT_Y = 0, BACK_HIT_W = 110, BACK_HIT_H = 58;
 constexpr int MODE_BTN_Y = 60, MODE_BTN_H = 40, MODE_BTN_W = 76, MODE_BTN_GAP = 4;
-constexpr int SETPOINT_Y = 108, SETPOINT_H = 65;
+constexpr int SETPOINT_Y = 106, SETPOINT_H = 63;
 constexpr int MINUS_X = 15, MINUS_W = 60;
 constexpr int PLUS_X = 245, PLUS_W = 60;
-constexpr int FAN_X = 60, FAN_Y = 183, FAN_W = 200, FAN_H = 30;
+constexpr int FAN_X = 60, FAN_Y = 175, FAN_W = 200, FAN_H = 30;
+constexpr int FOOTER_Y = 210, FOOTER_H = 30;
 
 const char *MODE_COMMANDS[4] = {"off", "heat", "cool", "auto"};
 const char *MODE_LABELS[4] = {"OFF", "HEAT", "COOL", "AUTO"};
@@ -37,10 +52,11 @@ uint16_t modeColorFor(TFT_eSPI &tft, const String &mode) {
 }
 }  // namespace
 
-void HvacPage::begin(TFT_eSPI &tftRef, HvacZonesManager &hvacRef, Beeper &beeperRef) {
+void HvacPage::begin(TFT_eSPI &tftRef, HvacZonesManager &hvacRef, Beeper &beeperRef, const WeatherManager &weatherRef) {
     tft = &tftRef;
     hvac = &hvacRef;
     beeper = &beeperRef;
+    weather = &weatherRef;
 }
 
 void HvacPage::onShow() {
@@ -185,6 +201,16 @@ void HvacPage::drawDetail() {
     tft->setTextColor(TFT_WHITE, TFT_BLACK);
     tft->drawString(fanLabel, 160, FAN_Y + FAN_H / 2, 4);
 
+    tft->drawFastHLine(10, FOOTER_Y, 300, TFT_DARKGREY);
+    tft->setTextColor(TFT_SILVER, TFT_BLACK);
+    WeatherData w = weather->data();
+    if (w.valid) {
+        snprintf(buf, sizeof(buf), "Outside: %.0fF", w.currentTempF);
+    } else {
+        snprintf(buf, sizeof(buf), "Outside: --");
+    }
+    tft->drawString(buf, 160, FOOTER_Y + FOOTER_H / 2, 4);
+
     tft->setTextDatum(TL_DATUM);
 }
 
@@ -193,7 +219,7 @@ void HvacPage::handleDetailTap(int x, int y) {
         return;
     }
 
-    if (hitTest(x, y, BACK_X, BACK_Y, BACK_W, BACK_H)) {
+    if (hitTest(x, y, BACK_HIT_X, BACK_HIT_Y, BACK_HIT_W, BACK_HIT_H)) {
         beeper->beep();
         mode = Mode::LIST;
         selectedZone = -1;

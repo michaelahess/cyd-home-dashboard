@@ -21,11 +21,13 @@ struct TouchEvent {
 // flow.
 class TouchTap {
 public:
-    // flipped: true when the display is running rotated 180 degrees from
-    // its normal orientation (see the boot-button rotation toggle in
-    // main.cpp). The touch panel's own wiring never changes, so screen
-    // coordinates need to be mirrored on both axes to match.
-    void begin(bool flipped);
+    // Calibration is always performed live, under whichever screen
+    // rotation is currently active (see calibrate()), so the raw-to-screen
+    // mapping it produces already matches the physical orientation on
+    // screen -- no separate rotation-aware transform is needed here.
+    // Rotating the display (main.cpp / the Settings page) invalidates the
+    // saved calibration for exactly this reason, forcing a fresh one.
+    void begin();
 
     // True once calibration bounds have been loaded (from NVS, or from a
     // calibrate() call this session). False means poll() will still work
@@ -47,15 +49,20 @@ public:
     TouchEvent poll();
 
 private:
-    bool flipped = false;
     bool calibrated = false;
     int rawXMin = 0, rawXMax = 4095;
     int rawYMin = 0, rawYMax = 4095;
 
     bool wasTouched = false;
     uint32_t touchDownMs = 0;
-    int downRawX = 0;
-    int downRawY = 0;
+    // Accumulated across every poll() call for the duration of the current
+    // touch, then averaged on release -- a single instantaneous reading
+    // (especially right at the moment of contact) is noisy enough on a
+    // resistive panel to cause real mis-taps, particularly on tightly
+    // packed buttons.
+    long sumRawX = 0;
+    long sumRawY = 0;
+    int sampleCount = 0;
 
     void loadCalibration();
     void saveCalibration();
