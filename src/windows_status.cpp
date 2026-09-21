@@ -4,6 +4,7 @@
 
 #include "data_mutex.h"
 #include "hubitat_client.h"
+#include "secrets.h"
 
 namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
@@ -11,12 +12,11 @@ constexpr int MAX_SENSORS = 16;
 
 // Hubitat device IDs for your window/door contact sensors -- standard
 // ContactSensor capability, "contact" attribute reports open/closed.
-// Edit this list (and NUM_SENSORS) for your own devices; find IDs via
-// Hubitat's Maker API app page or its /devices endpoint.
-constexpr int NUM_SENSORS = 8;
-constexpr const char *SENSOR_IDS[MAX_SENSORS] = {
-    "1350", "1193", "4330", "4331", "4332", "4334", "3407", "4346",
-};
+// Comes from secrets.h (git-ignored) rather than being hardcoded here --
+// see NUM_WINDOW_SENSORS/WINDOW_SENSOR_IDS in secrets.h.example. Leaving
+// NUM_WINDOW_SENSORS at 0 disables this feature entirely.
+constexpr int NUM_SENSORS = NUM_WINDOW_SENSORS;
+constexpr const char *SENSOR_IDS[MAX_SENSORS] = WINDOW_SENSOR_IDS;
 
 bool sensorOpen[MAX_SENSORS] = {};
 unsigned long lastFetchMs = 0;

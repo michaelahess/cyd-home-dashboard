@@ -119,17 +119,20 @@ to flash immediately, no reflash required:
      powers the Tesla, HVAC, and window/door status. Leave blank to skip.
    - Optionally: a public Uptime Kuma status page base URL + slug — powers
      the System Status page. Leave blank to skip.
-2. `secrets.h` is git-ignored and never committed.
-3. **Home Assistant and Hubitat only expose base URL/token/app id as
-   `secrets.h` variables.** *Which* devices/entities each page reads is
-   hardcoded (device IDs, entity IDs) since that's inherently specific to
-   your own HA/Hubitat setup -- there's no generic way to make "which
-   devices" a simple config variable. Edit these directly for your own
-   devices:
-   - `src/home_power.cpp` — HA entity IDs (battery/load/solar/grid sensors)
-   - `src/tesla.cpp` — Hubitat device IDs + display names for each vehicle
-   - `src/hvac_zones.cpp` — Hubitat device IDs + display labels for each zone
-   - `src/windows_status.cpp` — Hubitat device IDs for each contact sensor
+2. `secrets.h` is git-ignored and never committed -- so are the device IDs
+   and display names/labels you put in it (see below), which matters if you
+   ever publish your own fork, since those are inherently specific to (and
+   can reveal details about) your own home setup.
+3. *Which* Hubitat devices each page reads, and what to call them, are also
+   `secrets.h` variables: `HVAC_ZONE_IDS`/`HVAC_ZONE_LABELS`,
+   `TESLA_VEHICLE_IDS`/`TESLA_VEHICLE_NAMES`, and
+   `NUM_WINDOW_SENSORS`/`WINDOW_SENSOR_IDS` (see the comments in
+   `secrets.h.example`). Find device IDs via the Maker API app's device
+   list or its `/devices` endpoint.
+4. The one exception is `src/home_power.cpp`'s Home Assistant entity IDs
+   (battery/load/solar/grid sensors) -- those are embedded in a Jinja2
+   template string rather than a simple array, so they didn't fit the same
+   `secrets.h` pattern. Edit that file directly for your own HA entities.
 
 ## Build & flash
 
@@ -161,22 +164,24 @@ set may actually be live).
 Uses Hubitat's Maker API (plain HTTP, local network only —
 `src/hubitat_client.{h,cpp}`). Confirmed via that API's device list:
 
-- **Tesla** (`src/tesla.{h,cpp}`): per-vehicle devices (edit `VEHICLE_IDS`/
-  `VEHICLE_NAMES` for your own), type "TeslaMate Vehicle" — real per-car
-  `battery`, `inside_temp`, `outside_temp`, `lock`, `state`, `presence`
-  attributes.
-- **HVAC** (`src/hvac_zones.{h,cpp}`): devices 4000/4013/4014/4015/4016,
-  type "Mitsubishi Heat Pump MQTT" — real Hubitat Thermostat-capability
-  devices with documented commands (`heat`/`cool`/`off`/`auto`,
+- **Tesla** (`src/tesla.{h,cpp}`): per-vehicle devices, IDs/names set via
+  `TESLA_VEHICLE_IDS`/`TESLA_VEHICLE_NAMES` in `secrets.h`, type "TeslaMate
+  Vehicle" — real per-car `battery`, `inside_temp`, `outside_temp`, `lock`,
+  `state`, `presence` attributes.
+- **HVAC** (`src/hvac_zones.{h,cpp}`): zone devices, IDs/labels set via
+  `HVAC_ZONE_IDS`/`HVAC_ZONE_LABELS` in `secrets.h`, type "Mitsubishi Heat
+  Pump MQTT" — real Hubitat Thermostat-capability devices with documented
+  commands (`heat`/`cool`/`off`/`auto`,
   `setHeatingSetpoint`, `setCoolingSetpoint`, `fanAuto`/`fanOn`/`fanCirculate`).
   The device already bridges to the physical units via an existing
   Mosquitto MQTT link — this project only talks to Hubitat's HTTP API, never
   MQTT directly. Also reads `thermostatOperatingState` (heating/cooling/idle
   — whether a unit is actually running right now, not just its configured
   mode) to drive the status LED's purple state.
-- **Windows/doors** (`src/windows_status.{h,cpp}`): 8 standard
-  ContactSensor-capability devices, `contact` attribute is "open"/"closed" —
-  drives the status LED's blue/green state.
+- **Windows/doors** (`src/windows_status.{h,cpp}`): standard
+  ContactSensor-capability devices, IDs set via `NUM_WINDOW_SENSORS`/
+  `WINDOW_SENSOR_IDS` in `secrets.h`, `contact` attribute is "open"/"closed"
+  — drives the status LED's blue/green state.
 
 ## Hardware pinout reference (ESP32-2432S028R / CYD, 2.8" resistive)
 

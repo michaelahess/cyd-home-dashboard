@@ -4,13 +4,15 @@
 
 #include "data_mutex.h"
 #include "hubitat_client.h"
+#include "secrets.h"
 
 namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
-// Edit both arrays for your own zones -- IDs come from Hubitat's Maker API
-// device list, labels are just the display names this page shows.
-constexpr const char *ZONE_IDS[HvacZonesManager::NUM_ZONES] = {"4000", "4016", "4013", "4014", "4015"};
-constexpr const char *ZONE_LABELS[HvacZonesManager::NUM_ZONES] = {"Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"};
+// IDs and labels come from secrets.h (git-ignored) rather than being
+// hardcoded here, so your own zone names/device IDs never end up in
+// version control -- see HVAC_ZONE_IDS/HVAC_ZONE_LABELS in secrets.h.example.
+constexpr const char *ZONE_IDS[HvacZonesManager::NUM_ZONES] = HVAC_ZONE_IDS;
+constexpr const char *ZONE_LABELS[HvacZonesManager::NUM_ZONES] = HVAC_ZONE_LABELS;
 }  // namespace
 
 void HvacZonesManager::loop() {

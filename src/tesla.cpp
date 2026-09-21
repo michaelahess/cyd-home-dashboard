@@ -4,13 +4,16 @@
 
 #include "data_mutex.h"
 #include "hubitat_client.h"
+#include "secrets.h"
 
 namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
-// Edit both arrays for your own vehicles -- IDs come from Hubitat's Maker
-// API device list, names are just the display labels this page shows.
-constexpr const char *VEHICLE_IDS[TeslaManager::NUM_VEHICLES] = {"4258", "4259"};
-constexpr const char *VEHICLE_NAMES[TeslaManager::NUM_VEHICLES] = {"Vehicle 1", "Vehicle 2"};
+// IDs and names come from secrets.h (git-ignored) rather than being
+// hardcoded here, so your own vehicle names/device IDs never end up in
+// version control -- see TESLA_VEHICLE_IDS/TESLA_VEHICLE_NAMES in
+// secrets.h.example.
+constexpr const char *VEHICLE_IDS[TeslaManager::NUM_VEHICLES] = TESLA_VEHICLE_IDS;
+constexpr const char *VEHICLE_NAMES[TeslaManager::NUM_VEHICLES] = TESLA_VEHICLE_NAMES;
 }  // namespace
 
 void TeslaManager::loop() {
