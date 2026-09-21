@@ -6,11 +6,11 @@ first boot on a fresh unit walks you through touch calibration on-screen,
 and everything else (which pages appear, your location, dimming level, beep
 volume, display orientation) is either a `secrets.h` setting or adjustable
 live from the on-device Settings page. Tap the top of the screen to go to
-the previous page, tap the bottom for the next page. Each tap gives a short
-click on the onboard speaker pad, and HVAC mode changes (off/heat/cool/auto)
-get a distinct two-note chime instead, since those actuate a real unit. The
-onboard RGB LED doubles as an at-a-glance status light (see "Status LED"
-below).
+the previous page, tap the bottom for the next page. Buttons on the HVAC and
+Settings pages give a short click on the onboard speaker pad, and HVAC mode
+changes (off/heat/cool/auto) get a distinct two-note chime instead, since
+those actuate a real unit. The onboard RGB LED doubles as an at-a-glance
+status light (see "Status LED" below).
 
 Pages, in default order (some are skipped entirely if you haven't
 configured that integration -- see Setup):
@@ -49,10 +49,6 @@ bridge. 2.8", resistive-touch, dual-USB-port CYD variant. Developed and
 tested across two physical units of this variant; other CYD variants (different
 screen size/driver chip) would need `platformio.ini`'s TFT_eSPI build flags
 adjusted.
-
-An earlier version of this project used a second board as a Bluetooth
-audio-driven LED spectrum analyzer. That was dropped: Bluetooth Classic +
-Wi-Fi together didn't fit this chip's ~150KB heap (no PSRAM).
 
 Auto-dim: night mode (dim red text and weather icons, a dimmed backlight, and
 a dimmed status LED) triggers from a fixed 9pm-6am clock window, OR'd with
@@ -149,26 +145,26 @@ a different port, override with `--upload-port` / `--monitor-port`, or edit
 
 ## Home Assistant / EG4 integration
 
-Uses the same pattern as the family's existing Homepage dashboard widget: a
-single POST to HA's `/api/template` endpoint with a small Jinja2 template
+A single POST to HA's `/api/template` endpoint with a small Jinja2 template
 that renders several sensor values as one JSON blob in a single request
 (`src/ha_client.{h,cpp}`) — no direct Modbus/serial access to the inverter
 needed.
 
-The entity IDs in `src/home_power.cpp` (`battery_bank_44200e0218_*`,
-`flexboss21_44200e0218_*`) were confirmed live via a direct `/api/states`
-query — the `lux_*`/`eg4_*` entity names used by the old dashboard config
-are stale and always read 0. If the integration changes again, re-check
-`/api/states` for whichever entities are actively updating.
+The entity IDs in `src/home_power.cpp` are specific to one EG4 FlexBoss21
+installation — edit them for your own entities (check Home Assistant's
+`/api/states` for whichever ones are actively updating; some integrations
+expose multiple differently-named sensors for the same value, and only one
+set may actually be live).
 
 ## Hubitat integration (Tesla + HVAC)
 
 Uses Hubitat's Maker API (plain HTTP, local network only —
 `src/hubitat_client.{h,cpp}`). Confirmed via that API's device list:
 
-- **Tesla** (`src/tesla.{h,cpp}`): devices 4258 (Tessi) / 4259 (Cinder),
-  type "TeslaMate Vehicle" — real per-car `battery`, `inside_temp`,
-  `outside_temp`, `lock`, `state`, `presence` attributes.
+- **Tesla** (`src/tesla.{h,cpp}`): per-vehicle devices (edit `VEHICLE_IDS`/
+  `VEHICLE_NAMES` for your own), type "TeslaMate Vehicle" — real per-car
+  `battery`, `inside_temp`, `outside_temp`, `lock`, `state`, `presence`
+  attributes.
 - **HVAC** (`src/hvac_zones.{h,cpp}`): devices 4000/4013/4014/4015/4016,
   type "Mitsubishi Heat Pump MQTT" — real Hubitat Thermostat-capability
   devices with documented commands (`heat`/`cool`/`off`/`auto`,
@@ -201,9 +197,9 @@ Used by this project:
 | Touch CS | 33 |
 | Touch IRQ | 36 |
 | BOOT button (rotation toggle) | 0 (active-low, internal pull-up) |
-| RGB LED Red | 4 (active-low, PWM via LEDC) |
-| RGB LED Green | 16 (active-low, PWM via LEDC) |
-| RGB LED Blue | 17 (active-low, PWM via LEDC) |
+| RGB LED Red | 4 (active-low, PWM via LEDC -- notably dimmer than green/blue, see Known CYD quirks) |
+| RGB LED Green | 17 (active-low, PWM via LEDC) |
+| RGB LED Blue | 16 (active-low, PWM via LEDC) |
 | Onboard speaker pad (2-pin JST, labeled "SPEAK") | 26 (PWM square-wave beeps/chimes) |
 
 Also read, though not usefully yet (see Known CYD quirks):
@@ -239,10 +235,26 @@ whatever the backlight is doing.
   renders white instead of black and colors show as their complement (e.g.
   cyan renders as red). If you swap in a different panel and colors look
   wrong, try removing/toggling this line first.
-- Display orientation (`tft.setRotation(1)` vs `(3)`) is now runtime-toggled
-  via the physical BOOT button rather than hardcoded -- see "Rotating the
-  display" above. `src/touch.cpp` mirrors touch coordinates to match
-  whichever orientation is active.
+- Display orientation (`tft.setRotation(1)` vs `(3)`) is runtime-toggled via
+  the physical BOOT button or the Settings page rather than hardcoded --
+  see "Rotating the display" above. Touch calibration is captured live
+  under whichever rotation is active at the time (see "Touch calibration"),
+  so rotating invalidates and re-triggers it rather than needing any
+  separate coordinate-mirroring logic.
+- **The onboard RGB LED's GPIO-to-color mapping doesn't match what's
+  commonly documented for this board model.** Web research (never
+  independently verified until a live per-GPIO test) suggested
+  GPIO4/16/17 = red/green/blue. A "blue" status showing as green in
+  practice led to testing each GPIO alone: GPIO16 actually produces blue
+  and GPIO17 actually produces green -- swapped from the assumption, fixed
+  in `status_led.cpp`. GPIO4 (red) looked wrong too in that same test (a
+  blue/green blend instead of red), but a follow-up isolated blink test
+  confirmed it does drive a real red channel -- it's just noticeably dimmer
+  than green/blue at the same PWM duty, likely a real difference in the LED
+  package's red die/current-limiting rather than a wiring problem (full
+  duty is already maximum current, so there's no software fix to brighten
+  it further). If you build this on your own board, don't assume this
+  project's pin numbers are correct for yours either -- verify the same way.
 - **Backlight PWM dimming: board 1 originally corrupted, board 2 didn't --
   then a retest on board 1 came back clean.** First round: any `ledcWrite`
   duty below 100% corrupted board 1's display (stuck white screen, sometimes

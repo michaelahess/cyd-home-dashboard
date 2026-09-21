@@ -6,9 +6,8 @@
 #include "page.h"
 #include "uptime_kuma.h"
 
-// Simple up/down summary of the family's Uptime Kuma monitors: a happy
-// checkmark when everything's up, otherwise a count and the names of
-// whatever's down.
+// Simple up/down summary of your Uptime Kuma monitors: a happy checkmark
+// when everything's up, otherwise a count and the names of whatever's down.
 class UptimePage : public Page {
 public:
     void begin(TFT_eSPI &tftRef, const UptimeKumaManager &kumaRef);

@@ -21,7 +21,7 @@ bool haFetchTemplate(const String &jinjaTemplate, JsonDocument &outDoc) {
     serializeJson(reqDoc, body);
 
     WiFiClientSecure client;
-    client.setInsecure();  // local HA instance; matches the family's existing dashboard config
+    client.setInsecure();  // local HA instance on the home network; skipping cert validation is an acceptable tradeoff here
     HTTPClient http;
     http.begin(client, String(HA_BASE_URL) + "/api/template");
     http.addHeader("Authorization", String("Bearer ") + HA_TOKEN);

@@ -3,9 +3,19 @@
 #include <Arduino.h>
 
 namespace {
+// GPIO16/17 confirmed swapped from the originally assumed G/B assignment
+// via a live one-GPIO-at-a-time test (16 -> blue, 17 -> green) -- that
+// assumption was only ever sourced from web research for this board model,
+// never independently verified until now. GPIO4 (red) initially looked
+// wrong too (a blue/green blend instead of red in that same test), but an
+// isolated blink test confirmed it: GPIO4 does drive a real red channel,
+// it's just noticeably dimmer than blue/green at the same PWM duty --
+// likely a real difference in the LED package's red die/current-limiting,
+// not a wiring or software issue (full duty is already maximum current,
+// so there's no further software headroom to brighten it).
 constexpr int PIN_R = 4;
-constexpr int PIN_G = 16;
-constexpr int PIN_B = 17;
+constexpr int PIN_G = 17;
+constexpr int PIN_B = 16;
 constexpr int PWM_FREQ_HZ = 5000;
 constexpr int PWM_RES_BITS = 8;
 constexpr int PWM_MAX = 255;

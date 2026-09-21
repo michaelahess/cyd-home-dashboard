@@ -1,10 +1,10 @@
 #pragma once
 
-// Hubitat contact/window sensors. NOT YET ACTIVE: no window devices are
-// exposed to the Maker API app yet (confirmed via /devices -- only the 5
-// HVAC + 2 Tesla devices are there). Once you expose them in Hubitat and
-// give me their device IDs, fill in SENSOR_IDS in windows_status.cpp (and
-// bump NUM_SENSORS) -- everything else already works off hasSensors().
+// Hubitat contact/window sensors -- drives the status LED's blue (open) /
+// green (all closed) state. Device IDs are in windows_status.cpp; edit
+// SENSOR_IDS (and NUM_SENSORS) there for your own sensors. Everything else
+// here works off hasSensors(), so leaving NUM_SENSORS at 0 disables this
+// cleanly.
 class WindowsStatusManager {
 public:
     void loop();

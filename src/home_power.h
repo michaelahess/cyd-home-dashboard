@@ -18,9 +18,8 @@ struct HomePowerData {
 };
 
 // Polls the house EG4 battery/inverter system via Home Assistant's
-// /api/template endpoint (same pattern already used by the family's
-// Homepage dashboard) -- one small POST returning several sensor values in
-// a single response, no direct Modbus/serial-bridge access.
+// /api/template endpoint -- one small POST returning several sensor values
+// in a single response, no direct Modbus/serial-bridge access.
 class HomePowerManager {
 public:
     void loop();

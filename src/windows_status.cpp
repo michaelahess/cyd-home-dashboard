@@ -9,18 +9,13 @@ namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
 constexpr int MAX_SENSORS = 16;
 
-// 8 window/patio-door contact sensors, confirmed via /devices: standard
-// ContactSensor capability, "contact" attribute is "open"/"closed".
+// Hubitat device IDs for your window/door contact sensors -- standard
+// ContactSensor capability, "contact" attribute reports open/closed.
+// Edit this list (and NUM_SENSORS) for your own devices; find IDs via
+// Hubitat's Maker API app page or its /devices endpoint.
 constexpr int NUM_SENSORS = 8;
 constexpr const char *SENSOR_IDS[MAX_SENSORS] = {
-    "1350",  // MBR - CT - Patio Door
-    "1193",  // RRM - CT - Window
-    "4330",  // LVR - CT - S Wnd
-    "4331",  // LVR - CT - N Wnd
-    "4332",  // MBR - CT - W Wnd
-    "4334",  // BB - CT - Window
-    "3407",  // RBN - CT - Patio Door
-    "4346",  // MBT - CT - Window
+    "1350", "1193", "4330", "4331", "4332", "4334", "3407", "4346",
 };
 
 bool sensorOpen[MAX_SENSORS] = {};
@@ -34,9 +29,17 @@ bool WindowsStatusManager::fetchNow() {
         if (!hubitatGetDevice(SENSOR_IDS[i], doc)) {
             continue;
         }
-        String contact = hubitatAttrString(doc, "contact");  // "open" / "closed"
+        String contact = hubitatAttrString(doc, "contact");
+        String normalized = contact;
+        normalized.trim();
+        normalized.toLowerCase();
+        // Logged because different Hubitat drivers have been seen to report
+        // this attribute with different casing/whitespace -- if a sensor
+        // never seems to register as open, check here first for what it's
+        // actually sending before assuming the sensor itself is at fault.
+        Serial.printf("Window sensor %s: contact=\"%s\"\n", SENSOR_IDS[i], contact.c_str());
         DataLock lock;
-        sensorOpen[i] = (contact == "open");
+        sensorOpen[i] = (normalized == "open");
         anyOk = true;
     }
     return anyOk;

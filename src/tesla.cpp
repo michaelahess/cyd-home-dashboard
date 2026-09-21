@@ -7,8 +7,10 @@
 
 namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
+// Edit both arrays for your own vehicles -- IDs come from Hubitat's Maker
+// API device list, names are just the display labels this page shows.
 constexpr const char *VEHICLE_IDS[TeslaManager::NUM_VEHICLES] = {"4258", "4259"};
-constexpr const char *VEHICLE_NAMES[TeslaManager::NUM_VEHICLES] = {"Tessi", "Cinder"};
+constexpr const char *VEHICLE_NAMES[TeslaManager::NUM_VEHICLES] = {"Vehicle 1", "Vehicle 2"};
 }  // namespace
 
 void TeslaManager::loop() {

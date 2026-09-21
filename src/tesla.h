@@ -23,7 +23,7 @@ public:
 
     void loop();
 
-    // index 0 = Tessi, 1 = Cinder
+    // index 0/1 match VEHICLE_IDS/VEHICLE_NAMES in tesla.cpp
     TeslaVehicleData data(int index) const;
 
 private:

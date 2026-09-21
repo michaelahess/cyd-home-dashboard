@@ -7,8 +7,10 @@
 
 namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
+// Edit both arrays for your own zones -- IDs come from Hubitat's Maker API
+// device list, labels are just the display names this page shows.
 constexpr const char *ZONE_IDS[HvacZonesManager::NUM_ZONES] = {"4000", "4016", "4013", "4014", "4015"};
-constexpr const char *ZONE_LABELS[HvacZonesManager::NUM_ZONES] = {"Office", "Bedrm", "Robin", "Rayne", "Living"};
+constexpr const char *ZONE_LABELS[HvacZonesManager::NUM_ZONES] = {"Zone 1", "Zone 2", "Zone 3", "Zone 4", "Zone 5"};
 }  // namespace
 
 void HvacZonesManager::loop() {

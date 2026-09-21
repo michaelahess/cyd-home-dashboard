@@ -9,10 +9,11 @@ enum class StatusColor {
 };
 
 // Onboard RGB LED (LED1), simple 3-channel common type (not addressable),
-// active-low on GPIO4 (red) / GPIO16 (green) / GPIO17 (blue). Driven via
-// LEDC PWM (not plain digitalWrite) so brightness can be pulled down at
-// night alongside the screen dimming, using the same night-mode signal
-// main.cpp already computes for the backlight.
+// active-low on GPIO4 (red, unconfirmed -- see status_led.cpp) / GPIO17
+// (green) / GPIO16 (blue). Driven via LEDC PWM (not plain digitalWrite) so
+// brightness can be pulled down at night alongside the screen dimming,
+// using the same night-mode signal main.cpp already computes for the
+// backlight.
 class StatusLed {
 public:
     void begin();
