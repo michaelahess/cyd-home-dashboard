@@ -3,8 +3,16 @@
 #include "weather_icon.h"
 
 namespace {
-constexpr int WEATHER_Y0 = 177;
+// Layout without the power row; everything is shifted down by yOff when it's shown.
+constexpr int POWER_ROW_H = 26;
+constexpr int WEATHER_Y0 = 151;
 constexpr int WEATHER_H = 60;
+
+// A genuinely dim red rather than TFT_RED's full saturation, to match the
+// dimmed backlight/LED at night (see main.cpp's night-mode handling).
+uint16_t dimRed(TFT_eSPI &tft) {
+    return tft.color565(0x70, 0x00, 0x00);
+}
 
 // Battery color follows charge level -- the same green/yellow/red convention
 // as a phone's battery icon, so the color itself carries meaning.
@@ -16,12 +24,6 @@ uint16_t batteryColor(TFT_eSPI &tft, int percent) {
         return tft.color565(0xfa, 0xb2, 0x19);  // warning / amber
     }
     return tft.color565(0xd0, 0x3b, 0x3b);  // critical / red
-}
-
-// A genuinely dim red rather than TFT_RED's full saturation, to match the
-// dimmed backlight/LED at night (see main.cpp's night-mode handling).
-uint16_t dimRed(TFT_eSPI &tft) {
-    return tft.color565(0x70, 0x00, 0x00);
 }
 
 // Battery outline + terminal nub, filled proportionally to charge level.
@@ -44,10 +46,11 @@ void drawBoltIcon(TFT_eSPI &tft, int cx, int cy, uint16_t color) {
 }
 }  // namespace
 
-void ClockWeatherPage::begin(TFT_eSPI &tftRef, const WeatherManager &weatherRef, const HomePowerManager &powerRef) {
+void ClockWeatherPage::begin(TFT_eSPI &tftRef, const WeatherManager &weatherRef, const HomePowerManager *powerRef) {
     tft = &tftRef;
     weather = &weatherRef;
-    power = &powerRef;
+    power = powerRef;
+    yOff = power ? POWER_ROW_H : 0;
 }
 
 void ClockWeatherPage::onShow() {
@@ -64,6 +67,9 @@ void ClockWeatherPage::onShow() {
 }
 
 void ClockWeatherPage::drawPowerRow() {
+    if (!power) {
+        return;
+    }
     const HomePowerData &p = power->data();
     if (p.valid == lastPowerValid && p.batteryPercent == lastBatteryDrawn && p.loadWatts == lastLoadDrawn) {
         return;
@@ -72,7 +78,7 @@ void ClockWeatherPage::drawPowerRow() {
     lastBatteryDrawn = p.batteryPercent;
     lastLoadDrawn = p.loadWatts;
 
-    tft->fillRect(0, 0, 320, 26, TFT_BLACK);
+    tft->fillRect(0, 0, 320, POWER_ROW_H, TFT_BLACK);
     if (!p.valid) {
         return;
     }
@@ -102,7 +108,7 @@ void ClockWeatherPage::drawTime(const struct tm &timeinfo) {
     lastDrawnHour = timeinfo.tm_hour;
     lastDrawnMinute = timeinfo.tm_min;
 
-    tft->fillRect(0, 28, 320, 102, TFT_BLACK);
+    tft->fillRect(0, 2 + yOff, 320, 102, TFT_BLACK);
 
     int hour12 = timeinfo.tm_hour % 12;
     if (hour12 == 0) {
@@ -132,10 +138,10 @@ void ClockWeatherPage::drawTime(const struct tm &timeinfo) {
     tft->setTextColor(nightMode ? dimRed(*tft) : TFT_CYAN, TFT_BLACK);
     tft->setTextDatum(ML_DATUM);
     tft->setTextSize(2);
-    tft->drawString(buf, startX, 85, 7);
+    tft->drawString(buf, startX, 59 + yOff, 7);
     tft->setTextSize(1);
 
-    tft->drawString(ampm, startX + timeW + GAP, 85, 4);
+    tft->drawString(ampm, startX + timeW + GAP, 59 + yOff, 4);
     tft->setTextDatum(TL_DATUM);
 }
 
@@ -145,16 +151,16 @@ void ClockWeatherPage::drawDate(const struct tm &timeinfo) {
     }
     lastDrawnYday = timeinfo.tm_yday;
 
-    tft->fillRect(0, 130, 320, 30, TFT_BLACK);
+    tft->fillRect(0, 104 + yOff, 320, 30, TFT_BLACK);
     char buf[40];
     strftime(buf, sizeof(buf), "%A, %B %d", &timeinfo);
 
     tft->setTextColor(nightMode ? dimRed(*tft) : TFT_GREEN, TFT_BLACK);
     tft->setTextDatum(MC_DATUM);
-    tft->drawString(buf, 160, 145, 4);
+    tft->drawString(buf, 160, 119 + yOff, 4);
     tft->setTextDatum(TL_DATUM);
 
-    tft->drawFastHLine(90, 164, 140, TFT_DARKGREY);
+    tft->drawFastHLine(90, 138 + yOff, 140, TFT_DARKGREY);
 }
 
 void ClockWeatherPage::drawWeather() {
@@ -168,19 +174,17 @@ void ClockWeatherPage::drawWeather() {
     lastTempDrawn = roundedTemp;
     lastWeatherCodeDrawn = w.weatherCode;
 
-    tft->fillRect(0, WEATHER_Y0, 320, WEATHER_H, TFT_BLACK);
+    tft->fillRect(0, WEATHER_Y0 + yOff, 320, WEATHER_H, TFT_BLACK);
 
     if (!w.valid) {
         tft->setTextColor(TFT_WHITE, TFT_BLACK);
         tft->setTextDatum(MC_DATUM);
-        tft->drawString("Weather unavailable", 160, WEATHER_Y0 + WEATHER_H / 2, 4);
+        tft->drawString("Weather unavailable", 160, WEATHER_Y0 + yOff + WEATHER_H / 2, 4);
         tft->setTextDatum(TL_DATUM);
         return;
     }
 
-    int cy = WEATHER_Y0 + WEATHER_H / 2;
-    // Nudged up a few px -- the icon's lowest strokes (cloud base / rain
-    // drops) were sitting right at the bottom edge of the panel.
+    int cy = WEATHER_Y0 + yOff + WEATHER_H / 2;
     int iconOverride = nightMode ? static_cast<int>(dimRed(*tft)) : -1;
     drawWeatherIcon(*tft, weatherCodeToIcon(w.weatherCode), 95, cy - 6, 2, iconOverride);
 

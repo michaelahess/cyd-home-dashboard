@@ -6,12 +6,16 @@ namespace {
 constexpr int LDR_PIN = 34;
 constexpr unsigned long SAMPLE_INTERVAL_MS = 2000;
 
-// PLACEHOLDER -- not measured yet. Direction (whether darkness reads higher
-// or lower) and magnitude both need tuning from the serial log
-// ("Light sensor raw=... smoothed=..." printed every sample) against real
-// day/night conditions on this specific board.
+// PLACEHOLDER -- not measured yet. Direction was flipped after a live
+// report on a second physical unit: shining a flashlight on the sensor
+// triggered night mode and covering it kept the display bright -- the
+// opposite of DARK_IS_BELOW_THRESHOLD's original guess (never exercised on
+// real data before, since the first unit's sensor read a flat, useless 0).
+// The threshold magnitude (800) is still an unverified guess and may need
+// tuning from the serial log ("Light sensor raw=... smoothed=..." printed
+// every sample) against real day/night conditions on this specific board.
 constexpr int DARK_THRESHOLD = 800;
-constexpr bool DARK_IS_BELOW_THRESHOLD = true;  // flip if readings turn out inverted
+constexpr bool DARK_IS_BELOW_THRESHOLD = false;  // flip back if a given board's readings go the other way
 }  // namespace
 
 void LightSensor::begin() {

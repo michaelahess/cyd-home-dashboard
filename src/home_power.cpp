@@ -4,6 +4,7 @@
 
 #include "data_mutex.h"
 #include "ha_client.h"
+#include "secrets.h"
 
 namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
@@ -23,21 +24,19 @@ void HomePowerManager::loop() {
 }
 
 bool HomePowerManager::fetchNow() {
-    // Entity IDs confirmed live via a direct /api/states query -- the
-    // lux_*/eg4_* names used by the old Homepage dashboard config are
-    // stale and always read 0.
+    // Which Home Assistant entities to read are secrets.h variables -- see
+    // POWER_* in secrets.h.example.
+    String tpl = "{";
+    tpl += "\"battery\": {{ states('" + String(POWER_BATTERY_SOC) + "') | float(0) }}, ";
+    tpl += "\"load\": {{ states('" + String(POWER_LOAD_W) + "') | float(0) }}, ";
+    tpl += "\"solar\": {{ states('" + String(POWER_SOLAR_W) + "') | float(0) }}, ";
+    tpl += "\"yield\": {{ states('" + String(POWER_YIELD_TODAY_KWH) + "') | float(0) }}, ";
+    tpl += "\"grid\": {{ states('" + String(POWER_GRID_W) + "') | float(0) }}, ";
+    tpl += "\"battpower\": {{ states('" + String(POWER_BATTERY_W) + "') | float(0) }}, ";
+    tpl += "\"battstatus\": \"{{ states('" + String(POWER_BATTERY_STATUS) + "') }}\"";
+    tpl += "}";
     JsonDocument doc;
-    bool ok = haFetchTemplate(
-        "{"
-        "\"battery\": {{ states('sensor.battery_bank_44200e0218_battery_bank_capacity_percent') | float(0) }}, "
-        "\"load\": {{ states('sensor.flexboss21_44200e0218_total_load_power') | float(0) }}, "
-        "\"solar\": {{ states('sensor.flexboss21_44200e0218_pv_total_power') | float(0) }}, "
-        "\"yield\": {{ states('sensor.flexboss21_44200e0218_yield') | float(0) }}, "
-        "\"grid\": {{ states('sensor.flexboss21_44200e0218_grid_power') | float(0) }}, "
-        "\"battpower\": {{ states('sensor.flexboss21_44200e0218_battery_power') | float(0) }}, "
-        "\"battstatus\": \"{{ states('sensor.flexboss21_44200e0218_battery_status') }}\""
-        "}",
-        doc);
+    bool ok = haFetchTemplate(tpl, doc);
     if (!ok) {
         return false;
     }

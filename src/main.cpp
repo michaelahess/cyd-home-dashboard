@@ -6,9 +6,10 @@
 #include "beep.h"
 #include "data_mutex.h"
 #include "display_settings.h"
+#include "fish_pump.h"
 #include "ha_client.h"
-#include "home_power.h"
 #include "hubitat_client.h"
+#include "home_power.h"
 #include "hvac_zones.h"
 #include "light_sensor.h"
 #include "night_settings.h"
@@ -16,16 +17,30 @@
 #include "pages/forecast_page.h"
 #include "pages/hvac_page.h"
 #include "pages/page.h"
+#include "pages/pump_page.h"
 #include "pages/settings_page.h"
 #include "pages/solar_page.h"
+#include "pages/tank_page.h"
 #include "pages/tesla_page.h"
 #include "pages/uptime_page.h"
 #include "status_led.h"
+#include "tank_temps.h"
 #include "tesla.h"
 #include "touch.h"
 #include "uptime_kuma.h"
 #include "weather.h"
 #include "windows_status.h"
+
+// Build profile -- one per physical display, picked by the PlatformIO
+// environment (see platformio.ini):
+//   pio run -e cyd-solar  -> CYD_PROFILE_SOLAR: clock with house battery/load
+//                            row, forecast, Solar page, Tesla, HVAC, status
+//   pio run -e cyd-fish   -> CYD_PROFILE_FISH:  clock, forecast, two Tank
+//                            Temps pages, Pump page, Tesla, HVAC, status
+// Both share one secrets.h.
+#if defined(CYD_PROFILE_SOLAR) == defined(CYD_PROFILE_FISH)
+#error "Build exactly one profile: pio run -e cyd-solar  or  pio run -e cyd-fish"
+#endif
 
 namespace {
 constexpr uint32_t LOOP_INTERVAL_MS = 20;
@@ -36,6 +51,8 @@ TouchTap touch;
 LightSensor lightSensor;
 WeatherManager weatherManager;
 HomePowerManager homePowerManager;
+FishPumpManager fishPumpManager;
+TankManager tankManager;
 HvacZonesManager hvacZonesManager;
 TeslaManager teslaManager;
 UptimeKumaManager uptimeKumaManager;
@@ -46,6 +63,9 @@ StatusLed statusLed;
 ClockWeatherPage clockWeatherPage;
 ForecastPage forecastPage;
 SolarPage solarPage;
+TankPage tankPage1;
+TankPage tankPage2;
+PumpPage pumpPage;
 TeslaPage teslaPage;
 HvacPage hvacPage;
 UptimePage uptimePage;
@@ -54,7 +74,7 @@ SettingsPage settingsPage;
 // Built at boot from whichever integrations secrets.h has configured (see
 // buildPageList()) -- a user who hasn't set up Hubitat or Home Assistant
 // just doesn't get those pages instead of seeing broken/empty ones.
-constexpr int MAX_PAGES = 7;
+constexpr int MAX_PAGES = 9;
 Page *pages[MAX_PAGES];
 int numPages = 0;
 int currentPage = 0;
@@ -79,16 +99,24 @@ void switchPage(int newIndex) {
     pages[currentPage]->onShow();
 }
 
-enum class PageId { CLOCK, FORECAST, SOLAR, TESLA, HVAC, UPTIME, SETTINGS };
+enum class PageId { CLOCK, FORECAST, SOLAR, TANKS1, TANKS2, PUMP, TESLA, HVAC, UPTIME, SETTINGS };
 
-// The swipe/tap order. Reorder this list to change the order pages appear
-// in -- that's the whole mechanism, no other code needs to change. Entries
-// for an integration you haven't configured in secrets.h are skipped
-// automatically (see buildPageList()), so it's safe to leave all seven
+// The swipe/tap order for each profile. Reorder a list to change the order
+// pages appear in -- that's the whole mechanism, no other code needs to
+// change. Entries for an integration you haven't configured in secrets.h are
+// skipped automatically (see buildPageList()), so it's safe to leave them
 // listed regardless of which ones apply to you.
+#if defined(CYD_PROFILE_SOLAR)
 constexpr PageId PAGE_ORDER[] = {
-    PageId::CLOCK, PageId::FORECAST, PageId::SOLAR, PageId::TESLA, PageId::HVAC, PageId::UPTIME, PageId::SETTINGS,
+    PageId::CLOCK, PageId::FORECAST, PageId::SOLAR,    PageId::TESLA,
+    PageId::HVAC,  PageId::UPTIME,   PageId::SETTINGS,
 };
+#else
+constexpr PageId PAGE_ORDER[] = {
+    PageId::CLOCK,   PageId::FORECAST, PageId::TANKS1,  PageId::TANKS2,    PageId::PUMP,
+    PageId::TESLA,   PageId::HVAC,     PageId::UPTIME,  PageId::SETTINGS,
+};
+#endif
 
 void buildPageList() {
     numPages = 0;
@@ -103,6 +131,21 @@ void buildPageList() {
             case PageId::SOLAR:
                 if (haConfigured()) {
                     pages[numPages++] = &solarPage;
+                }
+                break;
+            case PageId::TANKS1:
+                if (haConfigured()) {
+                    pages[numPages++] = &tankPage1;
+                }
+                break;
+            case PageId::TANKS2:
+                if (haConfigured()) {
+                    pages[numPages++] = &tankPage2;
+                }
+                break;
+            case PageId::PUMP:
+                if (haConfigured()) {
+                    pages[numPages++] = &pumpPage;
                 }
                 break;
             case PageId::TESLA:
@@ -152,7 +195,12 @@ void networkTask(void * /*pvParameters*/) {
 
         if (connected && (millis() - connectedAtMs) > WIFI_SETTLE_MS) {
             weatherManager.loop();
+#if defined(CYD_PROFILE_SOLAR)
             homePowerManager.loop();
+#else
+            fishPumpManager.loop();
+            tankManager.loop();
+#endif
             hvacZonesManager.loop();
             teslaManager.loop();
             uptimeKumaManager.loop();
@@ -190,9 +238,16 @@ void setup() {
     beeper.begin();
     statusLed.begin();
 
-    clockWeatherPage.begin(tft, weatherManager, homePowerManager);
+#if defined(CYD_PROFILE_SOLAR)
+    clockWeatherPage.begin(tft, weatherManager, &homePowerManager);
+#else
+    clockWeatherPage.begin(tft, weatherManager);
+#endif
     forecastPage.begin(tft, weatherManager);
     solarPage.begin(tft, homePowerManager);
+    tankPage1.begin(tft, tankManager, 0, 4);
+    tankPage2.begin(tft, tankManager, 4, 3);
+    pumpPage.begin(tft, fishPumpManager);
     teslaPage.begin(tft, teslaManager);
     hvacPage.begin(tft, hvacZonesManager, beeper, weatherManager);
     uptimePage.begin(tft, uptimeKumaManager);
