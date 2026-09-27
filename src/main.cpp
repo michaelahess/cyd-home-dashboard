@@ -6,8 +6,8 @@
 #include "beep.h"
 #include "data_mutex.h"
 #include "display_settings.h"
+#include "fish_pump.h"
 #include "ha_client.h"
-#include "home_power.h"
 #include "hubitat_client.h"
 #include "hvac_zones.h"
 #include "light_sensor.h"
@@ -16,11 +16,13 @@
 #include "pages/forecast_page.h"
 #include "pages/hvac_page.h"
 #include "pages/page.h"
+#include "pages/pump_page.h"
 #include "pages/settings_page.h"
-#include "pages/solar_page.h"
+#include "pages/tank_page.h"
 #include "pages/tesla_page.h"
 #include "pages/uptime_page.h"
 #include "status_led.h"
+#include "tank_temps.h"
 #include "tesla.h"
 #include "touch.h"
 #include "uptime_kuma.h"
@@ -35,7 +37,8 @@ TFT_eSPI tft;
 TouchTap touch;
 LightSensor lightSensor;
 WeatherManager weatherManager;
-HomePowerManager homePowerManager;
+FishPumpManager fishPumpManager;
+TankManager tankManager;
 HvacZonesManager hvacZonesManager;
 TeslaManager teslaManager;
 UptimeKumaManager uptimeKumaManager;
@@ -45,7 +48,9 @@ StatusLed statusLed;
 
 ClockWeatherPage clockWeatherPage;
 ForecastPage forecastPage;
-SolarPage solarPage;
+TankPage tankPage1;
+TankPage tankPage2;
+PumpPage pumpPage;
 TeslaPage teslaPage;
 HvacPage hvacPage;
 UptimePage uptimePage;
@@ -54,7 +59,7 @@ SettingsPage settingsPage;
 // Built at boot from whichever integrations secrets.h has configured (see
 // buildPageList()) -- a user who hasn't set up Hubitat or Home Assistant
 // just doesn't get those pages instead of seeing broken/empty ones.
-constexpr int MAX_PAGES = 7;
+constexpr int MAX_PAGES = 9;
 Page *pages[MAX_PAGES];
 int numPages = 0;
 int currentPage = 0;
@@ -79,15 +84,16 @@ void switchPage(int newIndex) {
     pages[currentPage]->onShow();
 }
 
-enum class PageId { CLOCK, FORECAST, SOLAR, TESLA, HVAC, UPTIME, SETTINGS };
+enum class PageId { CLOCK, FORECAST, TANKS1, TANKS2, PUMP, TESLA, HVAC, UPTIME, SETTINGS };
 
 // The swipe/tap order. Reorder this list to change the order pages appear
 // in -- that's the whole mechanism, no other code needs to change. Entries
 // for an integration you haven't configured in secrets.h are skipped
-// automatically (see buildPageList()), so it's safe to leave all seven
+// automatically (see buildPageList()), so it's safe to leave all of them
 // listed regardless of which ones apply to you.
 constexpr PageId PAGE_ORDER[] = {
-    PageId::CLOCK, PageId::FORECAST, PageId::SOLAR, PageId::TESLA, PageId::HVAC, PageId::UPTIME, PageId::SETTINGS,
+    PageId::CLOCK,   PageId::FORECAST, PageId::TANKS1,  PageId::TANKS2,    PageId::PUMP,
+    PageId::TESLA,   PageId::HVAC,     PageId::UPTIME,  PageId::SETTINGS,
 };
 
 void buildPageList() {
@@ -100,9 +106,19 @@ void buildPageList() {
             case PageId::FORECAST:
                 pages[numPages++] = &forecastPage;
                 break;
-            case PageId::SOLAR:
+            case PageId::TANKS1:
                 if (haConfigured()) {
-                    pages[numPages++] = &solarPage;
+                    pages[numPages++] = &tankPage1;
+                }
+                break;
+            case PageId::TANKS2:
+                if (haConfigured()) {
+                    pages[numPages++] = &tankPage2;
+                }
+                break;
+            case PageId::PUMP:
+                if (haConfigured()) {
+                    pages[numPages++] = &pumpPage;
                 }
                 break;
             case PageId::TESLA:
@@ -152,7 +168,8 @@ void networkTask(void * /*pvParameters*/) {
 
         if (connected && (millis() - connectedAtMs) > WIFI_SETTLE_MS) {
             weatherManager.loop();
-            homePowerManager.loop();
+            fishPumpManager.loop();
+            tankManager.loop();
             hvacZonesManager.loop();
             teslaManager.loop();
             uptimeKumaManager.loop();
@@ -190,9 +207,11 @@ void setup() {
     beeper.begin();
     statusLed.begin();
 
-    clockWeatherPage.begin(tft, weatherManager, homePowerManager);
+    clockWeatherPage.begin(tft, weatherManager);
     forecastPage.begin(tft, weatherManager);
-    solarPage.begin(tft, homePowerManager);
+    tankPage1.begin(tft, tankManager, 0, 4);
+    tankPage2.begin(tft, tankManager, 4, 3);
+    pumpPage.begin(tft, fishPumpManager);
     teslaPage.begin(tft, teslaManager);
     hvacPage.begin(tft, hvacZonesManager, beeper, weatherManager);
     uptimePage.begin(tft, uptimeKumaManager);

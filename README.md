@@ -15,26 +15,28 @@ status light (see "Status LED" below).
 Pages, in default order (some are skipped entirely if you haven't
 configured that integration -- see Setup):
 
-1. **Clock & weather** — large clock, date, current local weather, and (if
-   Home Assistant is configured) a house battery %/load W status row.
+1. **Clock & weather** — large clock, date, and current local weather.
    Always present.
 2. **5-Day Forecast** — one row per day with a hand-drawn condition icon,
    hi/lo temps, and precipitation chance. Always present.
-3. **Solar** — current + today's production, battery level, house load, grid
-   import/export, battery charge/discharge (EG4 FlexBoss21 via Home
-   Assistant). Only shown if `HA_BASE_URL` is set.
-4. **Tesla** — per-vehicle battery %, inside/outside temp, lock state, and
+3. **Tank Temps (1 of 2)** and 4. **Tank Temps (2 of 2)** — probe
+   temperature for each tank, split across two pages (`NUM_TANKS` tanks,
+   names and HA entities from `secrets.h`). Only shown if `HA_BASE_URL` is set.
+5. **Pump** — auto-top-off pump: runs today, last/next run time, and
+   reservoir wet/dry status (HA entities from `secrets.h`). Only shown if
+   `HA_BASE_URL` is set.
+6. **Tesla** — per-vehicle battery %, inside/outside temp, lock state, and
    online status (via Hubitat's TeslaMate-driven devices). Only shown if
    `HUBITAT_BASE_URL` is set.
-5. **HVAC** — each zone's mode/temp/setpoint. Tap a zone row to open a
+7. **HVAC** — each zone's mode/temp/setpoint. Tap a zone row to open a
    control screen for it (mode, setpoint +/-, fan-mode cycle), with a Back
    button to return to the list. This actuates real thermostat units via
    Hubitat's Maker API — there's no confirmation step before a button press
    takes effect. Only shown if `HUBITAT_BASE_URL` is set.
-6. **System Status** — Uptime Kuma up/down count, with a happy checkmark
+8. **System Status** — Uptime Kuma up/down count, with a happy checkmark
    when everything's up or a list of what's down. Only shown if
    `UPTIME_KUMA_BASE_URL` is set.
-7. **Settings** — recalibrate touch, flip the display 180 degrees, and
+9. **Settings** — recalibrate touch, flip the display 180 degrees, and
    adjust night-mode dimming level and beep volume, all live, all persisted
    to flash (NVS). Always present.
 
@@ -42,7 +44,7 @@ configured that integration -- see Setup):
 `src/main.cpp` and reflash -- it's a plain list of page IDs read
 top-to-bottom, so reordering is just reordering that list. An entry for an
 integration you haven't configured is skipped automatically, so it's fine
-to leave all seven listed regardless of which ones apply to you.
+to leave all nine listed regardless of which ones apply to you.
 
 Board confirmed via `esptool`: ESP32-D0WD-V3, 4MB flash, CH340 USB-serial
 bridge. 2.8", resistive-touch, dual-USB-port CYD variant. Developed and
@@ -113,7 +115,7 @@ to flash immediately, no reflash required:
    - A POSIX TZ string for `configTzTime()` (see the tz database) (required)
    - Optionally: a Home Assistant base URL + long-lived access token
      (Profile > Security > Long-Lived Access Tokens in HA) — powers the
-     battery/load row and Solar page. Leave blank to skip.
+     Tank Temps and Pump pages. Leave blank to skip.
    - Optionally: a Hubitat Maker API base URL/app id/token (create a "Maker
      API" app in Hubitat, expose whichever devices you want it to read) —
      powers the Tesla, HVAC, and window/door status. Leave blank to skip.
@@ -129,10 +131,10 @@ to flash immediately, no reflash required:
    `NUM_WINDOW_SENSORS`/`WINDOW_SENSOR_IDS` (see the comments in
    `secrets.h.example`). Find device IDs via the Maker API app's device
    list or its `/devices` endpoint.
-4. The one exception is `src/home_power.cpp`'s Home Assistant entity IDs
-   (battery/load/solar/grid sensors) -- those are embedded in a Jinja2
-   template string rather than a simple array, so they didn't fit the same
-   `secrets.h` pattern. Edit that file directly for your own HA entities.
+4. *Which* Home Assistant entities the Tank Temps and Pump pages read are
+   `secrets.h` variables too: `TANK_ENTITY_IDS`/`TANK_LABELS` (exactly
+   `NUM_TANKS` entries, see `tank_temps.h`) and `PUMP_RUNS_COUNTER`,
+   `PUMP_LAST_RUN`, `PUMP_TIMER`, `PUMP_WET_SENSOR`.
 
 ## Build & flash
 
@@ -146,18 +148,13 @@ pio device monitor
 a different port, override with `--upload-port` / `--monitor-port`, or edit
 `upload_port` / `monitor_port` in `platformio.ini`.
 
-## Home Assistant / EG4 integration
+## Home Assistant integration (tanks + pump)
 
 A single POST to HA's `/api/template` endpoint with a small Jinja2 template
-that renders several sensor values as one JSON blob in a single request
-(`src/ha_client.{h,cpp}`) — no direct Modbus/serial access to the inverter
-needed.
-
-The entity IDs in `src/home_power.cpp` are specific to one EG4 FlexBoss21
-installation — edit them for your own entities (check Home Assistant's
-`/api/states` for whichever ones are actively updating; some integrations
-expose multiple differently-named sensors for the same value, and only one
-set may actually be live).
+that renders several entity values as one JSON blob in a single request
+(`src/ha_client.{h,cpp}`). The templates are built at runtime from the
+entity IDs in `secrets.h`. Check Home Assistant's `/api/states` for
+entities that are actively updating.
 
 ## Hubitat integration (Tesla + HVAC)
 
@@ -339,7 +336,7 @@ whatever the backlight is doing.
 - `src/weather.{h,cpp}` — also resolves `ZIP_CODE`/`ZIP_COUNTRY` (secrets.h)
   to a lat/lon via a free zip-lookup API if one was given, otherwise uses
   `LATITUDE`/`LONGITUDE` directly.
-- `src/home_power.{h,cpp}`, `src/hvac_zones.{h,cpp}`, `src/tesla.{h,cpp}`,
+- `src/tank_temps.{h,cpp}`, `src/fish_pump.{h,cpp}`, `src/hvac_zones.{h,cpp}`, `src/tesla.{h,cpp}`,
   `src/uptime_kuma.{h,cpp}`, `src/windows_status.{h,cpp}` — one manager per
   data source; each owns its own fetch timing and a `data()` accessor that
   returns a locked copy, safe to call from the render loop. Each no-ops
