@@ -9,6 +9,7 @@
 #include "fish_pump.h"
 #include "ha_client.h"
 #include "hubitat_client.h"
+#include "home_power.h"
 #include "hvac_zones.h"
 #include "light_sensor.h"
 #include "night_settings.h"
@@ -18,6 +19,7 @@
 #include "pages/page.h"
 #include "pages/pump_page.h"
 #include "pages/settings_page.h"
+#include "pages/solar_page.h"
 #include "pages/tank_page.h"
 #include "pages/tesla_page.h"
 #include "pages/uptime_page.h"
@@ -29,6 +31,17 @@
 #include "weather.h"
 #include "windows_status.h"
 
+// Build profile -- one per physical display, picked by the PlatformIO
+// environment (see platformio.ini):
+//   pio run -e cyd-solar  -> CYD_PROFILE_SOLAR: clock with house battery/load
+//                            row, forecast, Solar page, Tesla, HVAC, status
+//   pio run -e cyd-fish   -> CYD_PROFILE_FISH:  clock, forecast, two Tank
+//                            Temps pages, Pump page, Tesla, HVAC, status
+// Both share one secrets.h.
+#if defined(CYD_PROFILE_SOLAR) == defined(CYD_PROFILE_FISH)
+#error "Build exactly one profile: pio run -e cyd-solar  or  pio run -e cyd-fish"
+#endif
+
 namespace {
 constexpr uint32_t LOOP_INTERVAL_MS = 20;
 constexpr uint32_t NETWORK_TASK_STACK_BYTES = 12288;
@@ -37,6 +50,7 @@ TFT_eSPI tft;
 TouchTap touch;
 LightSensor lightSensor;
 WeatherManager weatherManager;
+HomePowerManager homePowerManager;
 FishPumpManager fishPumpManager;
 TankManager tankManager;
 HvacZonesManager hvacZonesManager;
@@ -48,6 +62,7 @@ StatusLed statusLed;
 
 ClockWeatherPage clockWeatherPage;
 ForecastPage forecastPage;
+SolarPage solarPage;
 TankPage tankPage1;
 TankPage tankPage2;
 PumpPage pumpPage;
@@ -84,17 +99,24 @@ void switchPage(int newIndex) {
     pages[currentPage]->onShow();
 }
 
-enum class PageId { CLOCK, FORECAST, TANKS1, TANKS2, PUMP, TESLA, HVAC, UPTIME, SETTINGS };
+enum class PageId { CLOCK, FORECAST, SOLAR, TANKS1, TANKS2, PUMP, TESLA, HVAC, UPTIME, SETTINGS };
 
-// The swipe/tap order. Reorder this list to change the order pages appear
-// in -- that's the whole mechanism, no other code needs to change. Entries
-// for an integration you haven't configured in secrets.h are skipped
-// automatically (see buildPageList()), so it's safe to leave all of them
+// The swipe/tap order for each profile. Reorder a list to change the order
+// pages appear in -- that's the whole mechanism, no other code needs to
+// change. Entries for an integration you haven't configured in secrets.h are
+// skipped automatically (see buildPageList()), so it's safe to leave them
 // listed regardless of which ones apply to you.
+#if defined(CYD_PROFILE_SOLAR)
+constexpr PageId PAGE_ORDER[] = {
+    PageId::CLOCK, PageId::FORECAST, PageId::SOLAR,    PageId::TESLA,
+    PageId::HVAC,  PageId::UPTIME,   PageId::SETTINGS,
+};
+#else
 constexpr PageId PAGE_ORDER[] = {
     PageId::CLOCK,   PageId::FORECAST, PageId::TANKS1,  PageId::TANKS2,    PageId::PUMP,
     PageId::TESLA,   PageId::HVAC,     PageId::UPTIME,  PageId::SETTINGS,
 };
+#endif
 
 void buildPageList() {
     numPages = 0;
@@ -105,6 +127,11 @@ void buildPageList() {
                 break;
             case PageId::FORECAST:
                 pages[numPages++] = &forecastPage;
+                break;
+            case PageId::SOLAR:
+                if (haConfigured()) {
+                    pages[numPages++] = &solarPage;
+                }
                 break;
             case PageId::TANKS1:
                 if (haConfigured()) {
@@ -168,8 +195,12 @@ void networkTask(void * /*pvParameters*/) {
 
         if (connected && (millis() - connectedAtMs) > WIFI_SETTLE_MS) {
             weatherManager.loop();
+#if defined(CYD_PROFILE_SOLAR)
+            homePowerManager.loop();
+#else
             fishPumpManager.loop();
             tankManager.loop();
+#endif
             hvacZonesManager.loop();
             teslaManager.loop();
             uptimeKumaManager.loop();
@@ -207,8 +238,13 @@ void setup() {
     beeper.begin();
     statusLed.begin();
 
+#if defined(CYD_PROFILE_SOLAR)
+    clockWeatherPage.begin(tft, weatherManager, &homePowerManager);
+#else
     clockWeatherPage.begin(tft, weatherManager);
+#endif
     forecastPage.begin(tft, weatherManager);
+    solarPage.begin(tft, homePowerManager);
     tankPage1.begin(tft, tankManager, 0, 4);
     tankPage2.begin(tft, tankManager, 4, 3);
     pumpPage.begin(tft, fishPumpManager);

@@ -1,9 +1,11 @@
 # ESP32 CYD Home Dashboard
 
 Turns a CYD ("Cheap Yellow Display", ESP32-2432S028R) into a home dashboard
-on its built-in 320x240 TFT. One firmware image, no per-board build flags --
-first boot on a fresh unit walks you through touch calibration on-screen,
-and everything else (which pages appear, your location, dimming level, beep
+on its built-in 320x240 TFT. There are two build profiles (PlatformIO
+environments) for two displays with different page sets -- **`cyd-solar`**
+and **`cyd-fish`**, see below -- and nothing else is board-specific: first
+boot on a fresh unit walks you through touch calibration on-screen, and
+everything else (which pages appear, your location, dimming level, beep
 volume, display orientation) is either a `secrets.h` setting or adjustable
 live from the on-device Settings page. Tap the top of the screen to go to
 the previous page, tap the bottom for the next page. Buttons on the HVAC and
@@ -12,39 +14,54 @@ changes (off/heat/cool/auto) get a distinct two-note chime instead, since
 those actuate a real unit. The onboard RGB LED doubles as an at-a-glance
 status light (see "Status LED" below).
 
-Pages, in default order (some are skipped entirely if you haven't
-configured that integration -- see Setup):
+Pages, in default order per profile (some are skipped entirely if you
+haven't configured that integration -- see Setup):
 
-1. **Clock & weather** — large clock, date, and current local weather.
-   Always present.
-2. **5-Day Forecast** — one row per day with a hand-drawn condition icon,
-   hi/lo temps, and precipitation chance. Always present.
-3. **Tank Temps (1 of 2)** and 4. **Tank Temps (2 of 2)** — probe
-   temperature for each tank, split across two pages (`NUM_TANKS` tanks,
-   names and HA entities from `secrets.h`). Only shown if `HA_BASE_URL` is set.
-5. **Pump** — auto-top-off pump: runs today, last/next run time, and
-   reservoir wet/dry status (HA entities from `secrets.h`). Only shown if
-   `HA_BASE_URL` is set.
-6. **Tesla** — per-vehicle battery %, inside/outside temp, lock state, and
-   online status (via Hubitat's TeslaMate-driven devices). Only shown if
-   `HUBITAT_BASE_URL` is set.
-7. **HVAC** — each zone's mode/temp/setpoint. Tap a zone row to open a
-   control screen for it (mode, setpoint +/-, fan-mode cycle), with a Back
-   button to return to the list. This actuates real thermostat units via
-   Hubitat's Maker API — there's no confirmation step before a button press
-   takes effect. Only shown if `HUBITAT_BASE_URL` is set.
-8. **System Status** — Uptime Kuma up/down count, with a happy checkmark
-   when everything's up or a list of what's down. Only shown if
-   `UPTIME_KUMA_BASE_URL` is set.
-9. **Settings** — recalibrate touch, flip the display 180 degrees, and
-   adjust night-mode dimming level and beep volume, all live, all persisted
-   to flash (NVS). Always present.
+| # | `cyd-solar` | `cyd-fish` |
+|---|---|---|
+| 1 | Clock & weather **+ house battery %/load W row** | Clock & weather |
+| 2 | 5-Day Forecast | 5-Day Forecast |
+| 3 | **Solar** | **Tank Temps (1 of 2)** |
+| 4 | Tesla | **Tank Temps (2 of 2)** |
+| 5 | HVAC | **Pump** |
+| 6 | System Status | Tesla |
+| 7 | Settings | HVAC |
+| 8 | | System Status |
+| 9 | | Settings |
 
-**To change the order**, edit the `PAGE_ORDER` array near the top of
-`src/main.cpp` and reflash -- it's a plain list of page IDs read
+- **Clock & weather** — large clock, date, and current local weather. On
+  `cyd-solar`, a slim house battery %/load W row sits on top (Home
+  Assistant). Always present.
+- **5-Day Forecast** — one row per day with a hand-drawn condition icon,
+  hi/lo temps, and precipitation chance. Always present.
+- **Solar** (`cyd-solar`) — current + today's production, battery level,
+  house load, grid import/export, battery charge/discharge (via Home
+  Assistant). Only shown if `HA_BASE_URL` is set.
+- **Tank Temps** (`cyd-fish`, two pages) — probe temperature for each tank
+  (`NUM_TANKS` tanks, names and HA entities from `secrets.h`). Only shown if
+  `HA_BASE_URL` is set.
+- **Pump** (`cyd-fish`) — auto-top-off pump: runs today, last/next run time,
+  and reservoir wet/dry status. Only shown if `HA_BASE_URL` is set.
+- **Tesla** — per-vehicle battery %, inside/outside temp, lock state, and
+  online status (via Hubitat's TeslaMate-driven devices). Only shown if
+  `HUBITAT_BASE_URL` is set.
+- **HVAC** — each zone's mode/temp/setpoint. Tap a zone row to open a
+  control screen for it (mode, setpoint +/-, fan-mode cycle), with a Back
+  button to return to the list. This actuates real thermostat units via
+  Hubitat's Maker API — there's no confirmation step before a button press
+  takes effect. Only shown if `HUBITAT_BASE_URL` is set.
+- **System Status** — Uptime Kuma up/down count, with a happy checkmark
+  when everything's up or a list of what's down. Only shown if
+  `UPTIME_KUMA_BASE_URL` is set.
+- **Settings** — recalibrate touch, flip the display 180 degrees, and
+  adjust night-mode dimming level and beep volume, all live, all persisted
+  to flash (NVS). Always present.
+
+**To change the order**, edit that profile's `PAGE_ORDER` array near the top
+of `src/main.cpp` and reflash -- it's a plain list of page IDs read
 top-to-bottom, so reordering is just reordering that list. An entry for an
 integration you haven't configured is skipped automatically, so it's fine
-to leave all nine listed regardless of which ones apply to you.
+to leave all of them listed regardless of which ones apply to you.
 
 Board confirmed via `esptool`: ESP32-D0WD-V3, 4MB flash, CH340 USB-serial
 bridge. 2.8", resistive-touch, dual-USB-port CYD variant. Developed and
@@ -115,7 +132,8 @@ to flash immediately, no reflash required:
    - A POSIX TZ string for `configTzTime()` (see the tz database) (required)
    - Optionally: a Home Assistant base URL + long-lived access token
      (Profile > Security > Long-Lived Access Tokens in HA) — powers the
-     Tank Temps and Pump pages. Leave blank to skip.
+     Solar page + battery/load row (`cyd-solar`) and the Tank Temps and Pump
+     pages (`cyd-fish`). Leave blank to skip.
    - Optionally: a Hubitat Maker API base URL/app id/token (create a "Maker
      API" app in Hubitat, expose whichever devices you want it to read) —
      powers the Tesla, HVAC, and window/door status. Leave blank to skip.
@@ -131,24 +149,30 @@ to flash immediately, no reflash required:
    `NUM_WINDOW_SENSORS`/`WINDOW_SENSOR_IDS` (see the comments in
    `secrets.h.example`). Find device IDs via the Maker API app's device
    list or its `/devices` endpoint.
-4. *Which* Home Assistant entities the Tank Temps and Pump pages read are
-   `secrets.h` variables too: `TANK_ENTITY_IDS`/`TANK_LABELS` (exactly
+4. *Which* Home Assistant entities the HA pages read are `secrets.h`
+   variables too: `POWER_*` for the Solar page/battery row (`cyd-solar`), and `TANK_ENTITY_IDS`/`TANK_LABELS` (exactly
    `NUM_TANKS` entries, see `tank_temps.h`) and `PUMP_RUNS_COUNTER`,
    `PUMP_LAST_RUN`, `PUMP_TIMER`, `PUMP_WET_SENSOR`.
 
 ## Build & flash
 
+Always name the profile -- both displays use the same serial port, and a
+bare `pio run -t upload` would flash both images in turn:
+
 ```
-pio run
-pio run -t upload
+pio run -e cyd-solar -t upload     # the solar display
+pio run -e cyd-fish  -t upload     # the fish-tank display
 pio device monitor
 ```
+
+A bare `pio run` builds both profiles, which is a quick check that a change
+didn't break either. Both profiles share one `src/secrets.h`.
 
 `platformio.ini` is pinned to `/dev/cu.usbserial-10`. If the board enumerates on
 a different port, override with `--upload-port` / `--monitor-port`, or edit
 `upload_port` / `monitor_port` in `platformio.ini`.
 
-## Home Assistant integration (tanks + pump)
+## Home Assistant integration (solar, tanks, pump)
 
 A single POST to HA's `/api/template` endpoint with a small Jinja2 template
 that renders several entity values as one JSON blob in a single request
@@ -336,7 +360,8 @@ whatever the backlight is doing.
 - `src/weather.{h,cpp}` — also resolves `ZIP_CODE`/`ZIP_COUNTRY` (secrets.h)
   to a lat/lon via a free zip-lookup API if one was given, otherwise uses
   `LATITUDE`/`LONGITUDE` directly.
-- `src/tank_temps.{h,cpp}`, `src/fish_pump.{h,cpp}`, `src/hvac_zones.{h,cpp}`, `src/tesla.{h,cpp}`,
+- `src/home_power.{h,cpp}` (solar), `src/tank_temps.{h,cpp}` and `src/fish_pump.{h,cpp}` (fish),
+  `src/hvac_zones.{h,cpp}`, `src/tesla.{h,cpp}`,
   `src/uptime_kuma.{h,cpp}`, `src/windows_status.{h,cpp}` — one manager per
   data source; each owns its own fetch timing and a `data()` accessor that
   returns a locked copy, safe to call from the render loop. Each no-ops
