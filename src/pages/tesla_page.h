@@ -7,7 +7,7 @@
 #include "tesla.h"
 
 // Both vehicles' battery %, inside/outside temp, lock state, and online
-// status via Hubitat's TeslaMate-driven devices.
+// status via Home Assistant.
 class TeslaPage : public Page {
 public:
     void begin(TFT_eSPI &tftRef, const TeslaManager &teslaRef);

@@ -17,11 +17,9 @@ struct HvacZoneData {
     String operatingState;
 };
 
-// Real per-zone thermostat status and control via Hubitat's "Mitsubishi
-// Heat Pump MQTT" driver -- replaces the earlier single
-// aggregate-power-only reading now that per-zone mode/temp/setpoint data
-// (and real, well-documented Thermostat-capability commands) are confirmed
-// available.
+// Per-zone thermostat status and control via Home Assistant `climate`
+// entities (HVAC_ZONE_ENTITIES in secrets.h). HA's mode names are translated
+// to the strings below (heat_cool -> "auto").
 class HvacZonesManager {
 public:
     static constexpr int NUM_ZONES = 5;
@@ -34,8 +32,7 @@ public:
     // right now (not just configured for it).
     bool anyActivelyHeatingOrCooling() const;
 
-    // command is one of: "off", "heat", "cool", "auto" (matches Hubitat's
-    // no-argument mode commands). Updates the cached mode immediately
+    // command is one of: "off", "heat", "cool", "auto". Updates the cached mode immediately
     // (optimistic) rather than waiting for the next poll.
     bool sendMode(int index, const char *command);
 
@@ -43,11 +40,15 @@ public:
     // cooling) by deltaF degrees, clamped to a sane 60-85F range.
     bool adjustSetpoint(int index, float deltaF);
 
-    // Cycles fan mode: auto -> on -> circulate -> auto.
+    // Cycles through the fan modes the climate entity reports (fan_modes).
     bool cycleFanMode(int index);
 
 private:
     HvacZoneData current[NUM_ZONES];
+    // Comma-separated climate `fan_modes` / `hvac_modes` per zone, so fan
+    // cycling and the "auto" button can use what each entity supports.
+    String fanModesCsv[NUM_ZONES];
+    String hvacModesCsv[NUM_ZONES];
     unsigned long lastFetchMs = 0;
 
     bool fetchNow();
