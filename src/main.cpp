@@ -8,11 +8,11 @@
 #include "display_settings.h"
 #include "fish_pump.h"
 #include "ha_client.h"
-#include "hubitat_client.h"
 #include "home_power.h"
 #include "hvac_zones.h"
 #include "light_sensor.h"
 #include "night_settings.h"
+#include "ota.h"
 #include "pages/clock_weather_page.h"
 #include "pages/forecast_page.h"
 #include "pages/hvac_page.h"
@@ -72,7 +72,7 @@ UptimePage uptimePage;
 SettingsPage settingsPage;
 
 // Built at boot from whichever integrations secrets.h has configured (see
-// buildPageList()) -- a user who hasn't set up Hubitat or Home Assistant
+// buildPageList()) -- a user who hasn't set up Home Assistant
 // just doesn't get those pages instead of seeing broken/empty ones.
 constexpr int MAX_PAGES = 9;
 Page *pages[MAX_PAGES];
@@ -149,12 +149,12 @@ void buildPageList() {
                 }
                 break;
             case PageId::TESLA:
-                if (hubitatConfigured()) {
+                if (haConfigured()) {
                     pages[numPages++] = &teslaPage;
                 }
                 break;
             case PageId::HVAC:
-                if (hubitatConfigured()) {
+                if (haConfigured()) {
                     pages[numPages++] = &hvacPage;
                 }
                 break;
@@ -193,7 +193,7 @@ void networkTask(void * /*pvParameters*/) {
         }
         wasConnected = connected;
 
-        if (connected && (millis() - connectedAtMs) > WIFI_SETTLE_MS) {
+        if (connected && !otaInProgress() && (millis() - connectedAtMs) > WIFI_SETTLE_MS) {
             weatherManager.loop();
 #if defined(CYD_PROFILE_SOLAR)
             homePowerManager.loop();
@@ -265,6 +265,13 @@ void setup() {
 }
 
 void loop() {
+    // Serviced every pass (not rate-limited below) so an update is never
+    // missed; while one is being received, skip everything else.
+    otaLoop();
+    if (otaInProgress()) {
+        return;
+    }
+
     static uint32_t lastLoopMs = 0;
 
     uint32_t now = millis();

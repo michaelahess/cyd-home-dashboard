@@ -43,13 +43,13 @@ haven't configured that integration -- see Setup):
 - **Pump** (`cyd-fish`) — auto-top-off pump: runs today, last/next run time,
   and reservoir wet/dry status. Only shown if `HA_BASE_URL` is set.
 - **Tesla** — per-vehicle battery %, inside/outside temp, lock state, and
-  online status (via Hubitat's TeslaMate-driven devices). Only shown if
-  `HUBITAT_BASE_URL` is set.
+  online status (from Home Assistant entities). Only shown if
+  `HA_BASE_URL` is set.
 - **HVAC** — each zone's mode/temp/setpoint. Tap a zone row to open a
   control screen for it (mode, setpoint +/-, fan-mode cycle), with a Back
   button to return to the list. This actuates real thermostat units via
-  Hubitat's Maker API — there's no confirmation step before a button press
-  takes effect. Only shown if `HUBITAT_BASE_URL` is set.
+  Home Assistant `climate` services — there's no confirmation step before a
+  button press takes effect. Only shown if `HA_BASE_URL` is set.
 - **System Status** — Uptime Kuma up/down count, with a happy checkmark
   when everything's up or a list of what's down. Only shown if
   `UPTIME_KUMA_BASE_URL` is set.
@@ -79,7 +79,7 @@ across two boards) is adjustable from the Settings page.
 ## Status LED
 
 The onboard RGB LED reflects one status at a time (highest priority first),
-all sourced from Hubitat/Uptime Kuma:
+all sourced from Home Assistant/Uptime Kuma:
 
 1. **Red** -- something in Uptime Kuma is down.
 2. **Purple** -- any HVAC zone is actively heating or cooling right now.
@@ -133,22 +133,20 @@ to flash immediately, no reflash required:
    - Optionally: a Home Assistant base URL + long-lived access token
      (Profile > Security > Long-Lived Access Tokens in HA) — powers the
      Solar page + battery/load row (`cyd-solar`) and the Tank Temps and Pump
-     pages (`cyd-fish`). Leave blank to skip.
-   - Optionally: a Hubitat Maker API base URL/app id/token (create a "Maker
-     API" app in Hubitat, expose whichever devices you want it to read) —
-     powers the Tesla, HVAC, and window/door status. Leave blank to skip.
+     pages (`cyd-fish`), and the Tesla, HVAC, and window/door status (both).
+     Leave blank to skip.
    - Optionally: a public Uptime Kuma status page base URL + slug — powers
      the System Status page. Leave blank to skip.
 2. `secrets.h` is git-ignored and never committed -- so are the device IDs
    and display names/labels you put in it (see below), which matters if you
    ever publish your own fork, since those are inherently specific to (and
    can reveal details about) your own home setup.
-3. *Which* Hubitat devices each page reads, and what to call them, are also
-   `secrets.h` variables: `HVAC_ZONE_IDS`/`HVAC_ZONE_LABELS`,
-   `TESLA_VEHICLE_IDS`/`TESLA_VEHICLE_NAMES`, and
-   `NUM_WINDOW_SENSORS`/`WINDOW_SENSOR_IDS` (see the comments in
-   `secrets.h.example`). Find device IDs via the Maker API app's device
-   list or its `/devices` endpoint.
+3. *Which* HA entities the Tesla, HVAC, and window pages read, and what to
+   call them, are also `secrets.h` variables: `HVAC_ZONE_ENTITIES`/
+   `HVAC_ZONE_LABELS`, `TESLA_VEHICLE_NAMES` plus the per-field
+   `TESLA_*_ENTITIES` lists (use `""` for a field HA doesn't have), and
+   `NUM_WINDOW_SENSORS`/`WINDOW_SENSOR_ENTITIES` (see the comments in
+   `secrets.h.example`).
 4. *Which* Home Assistant entities the HA pages read are `secrets.h`
    variables too: `POWER_*` for the Solar page/battery row (`cyd-solar`), and `TANK_ENTITY_IDS`/`TANK_LABELS` (exactly
    `NUM_TANKS` entries, see `tank_temps.h`) and `PUMP_RUNS_COUNTER`,
@@ -180,29 +178,40 @@ that renders several entity values as one JSON blob in a single request
 entity IDs in `secrets.h`. Check Home Assistant's `/api/states` for
 entities that are actively updating.
 
-## Hubitat integration (Tesla + HVAC)
+## Tesla, HVAC and window sensors (Home Assistant)
 
-Uses Hubitat's Maker API (plain HTTP, local network only —
-`src/hubitat_client.{h,cpp}`). Confirmed via that API's device list:
+These used to read Hubitat's Maker API and now read Home Assistant, through
+the same `src/ha_client.{h,cpp}` helpers as the tank/pump/solar pages (one
+templated POST per refresh; commands go out as `climate.*` service calls).
+Units are whatever HA is set to; the firmware assumes °F.
 
-- **Tesla** (`src/tesla.{h,cpp}`): per-vehicle devices, IDs/names set via
-  `TESLA_VEHICLE_IDS`/`TESLA_VEHICLE_NAMES` in `secrets.h`, type "TeslaMate
-  Vehicle" — real per-car `battery`, `inside_temp`, `outside_temp`, `lock`,
-  `state`, `presence` attributes.
-- **HVAC** (`src/hvac_zones.{h,cpp}`): zone devices, IDs/labels set via
-  `HVAC_ZONE_IDS`/`HVAC_ZONE_LABELS` in `secrets.h`, type "Mitsubishi Heat
-  Pump MQTT" — real Hubitat Thermostat-capability devices with documented
-  commands (`heat`/`cool`/`off`/`auto`,
-  `setHeatingSetpoint`, `setCoolingSetpoint`, `fanAuto`/`fanOn`/`fanCirculate`).
-  The device already bridges to the physical units via an existing
-  Mosquitto MQTT link — this project only talks to Hubitat's HTTP API, never
-  MQTT directly. Also reads `thermostatOperatingState` (heating/cooling/idle
-  — whether a unit is actually running right now, not just its configured
-  mode) to drive the status LED's purple state.
-- **Windows/doors** (`src/windows_status.{h,cpp}`): standard
-  ContactSensor-capability devices, IDs set via `NUM_WINDOW_SENSORS`/
-  `WINDOW_SENSOR_IDS` in `secrets.h`, `contact` attribute is "open"/"closed"
-  — drives the status LED's blue/green state.
+- **Tesla** (`src/tesla.{h,cpp}`): per-vehicle battery, inside/outside temp,
+  lock, state, and presence entities from the `TESLA_*_ENTITIES` lists. Any
+  field set to `""` is skipped (temps show 0, state/lock show "-"). Presence
+  counts "on" (binary_sensor) or "home" (device_tracker) as at home.
+- **HVAC** (`src/hvac_zones.{h,cpp}`): one `climate` entity per zone.
+  Reads `hvac_mode`, `current_temperature`, `temperature` /
+  `target_temp_low` / `target_temp_high`, `fan_mode` and `hvac_action`
+  (heating/cooling/idle drives the status LED's purple state). HA's
+  `heat_cool` is shown as "auto". Buttons call `climate.set_hvac_mode`,
+  `climate.set_temperature` (heat/cool modes only) and
+  `climate.set_fan_mode`; the fan button steps through the entity's own
+  `fan_modes`. A zone with an empty entity ID shows "-".
+- **Windows/doors** (`src/windows_status.{h,cpp}`): `binary_sensor` entities
+  in `WINDOW_SENSOR_ENTITIES`, "on" = open — drives the status LED's
+  blue/green state. Unavailable sensors keep their last known value.
+
+## Over-the-air updates
+
+Boards can be reflashed over Wi-Fi (`src/ota.{h,cpp}`, ArduinoOTA). Set
+`OTA_PASSWORD` in `secrets.h` (blank disables OTA), flash a board once over
+USB with this firmware (it switches to a two-slot partition table), then:
+
+    export CYD_OTA_PASSWORD=<the OTA_PASSWORD value>
+    pio run -e cyd-fish-ota -t upload     # or cyd-solar-ota
+
+Boards show up as `cyd-fish.local` / `cyd-solar.local`. USB is only needed
+again if an update leaves a board unable to boot or reach Wi-Fi.
 
 ## Hardware pinout reference (ESP32-2432S028R / CYD, 2.8" resistive)
 
@@ -367,10 +376,9 @@ whatever the backlight is doing.
   returns a locked copy, safe to call from the render loop. Each no-ops
   (never makes a network call) when its integration isn't configured in
   `secrets.h`.
-- `src/ha_client.{h,cpp}` / `src/hubitat_client.{h,cpp}` — shared HTTP
-  plumbing for the two backends multiple managers talk to, plus
-  `haConfigured()`/`hubitatConfigured()` helpers used to decide which pages
-  `buildPageList()` includes.
+- `src/ha_client.{h,cpp}` — shared Home Assistant plumbing (template
+  queries and service calls) plus the `haConfigured()` helper used to decide
+  which pages `buildPageList()` includes.
 - `src/pages/page.h` — the `onShow()`/`loop()`/`onTap(x,y)` interface every
   page implements.
 - `src/pages/*.{h,cpp}` — one file pair per page (see the page list above).

@@ -3,43 +3,51 @@
 #include <WiFi.h>
 
 #include "data_mutex.h"
-#include "hubitat_client.h"
+#include "ha_client.h"
 #include "secrets.h"
 
 namespace {
 constexpr unsigned long FETCH_INTERVAL_MS = 30UL * 1000UL;
 constexpr int MAX_SENSORS = 16;
 
-// Hubitat device IDs for your window/door contact sensors -- standard
-// ContactSensor capability, "contact" attribute reports open/closed.
-// Comes from secrets.h (git-ignored) rather than being hardcoded here --
-// see NUM_WINDOW_SENSORS/WINDOW_SENSOR_IDS in secrets.h.example. Leaving
-// NUM_WINDOW_SENSORS at 0 disables this feature entirely.
+// Home Assistant binary_sensor entity IDs for your window/door contact
+// sensors ("on" = open). Comes from secrets.h (git-ignored) rather than
+// being hardcoded here -- see NUM_WINDOW_SENSORS/WINDOW_SENSOR_ENTITIES in
+// secrets.h.example. Leaving NUM_WINDOW_SENSORS at 0 disables this feature
+// entirely.
 constexpr int NUM_SENSORS = NUM_WINDOW_SENSORS;
-constexpr const char *SENSOR_IDS[MAX_SENSORS] = WINDOW_SENSOR_IDS;
+constexpr const char *SENSOR_ENTITIES[MAX_SENSORS] = WINDOW_SENSOR_ENTITIES;
 
 bool sensorOpen[MAX_SENSORS] = {};
 unsigned long lastFetchMs = 0;
 }  // namespace
 
 bool WindowsStatusManager::fetchNow() {
+    // One POST returning every sensor's raw HA state as {"s0": "on", ...}.
+    String tpl = "{";
+    for (int i = 0; i < NUM_SENSORS; i++) {
+        tpl += "\"s" + String(i) + "\": \"{{ states('" + SENSOR_ENTITIES[i] + "') }}\"";
+        if (i < NUM_SENSORS - 1) {
+            tpl += ", ";
+        }
+    }
+    tpl += "}";
+    JsonDocument doc;
+    if (!haFetchTemplate(tpl, doc)) {
+        return false;
+    }
+
     bool anyOk = false;
     for (int i = 0; i < NUM_SENSORS; i++) {
-        JsonDocument doc;
-        if (!hubitatGetDevice(SENSOR_IDS[i], doc)) {
-            continue;
+        String state = doc["s" + String(i)] | "";
+        // Logged so a sensor that never seems to register as open can be
+        // checked against what HA is actually reporting for it.
+        Serial.printf("Window sensor %s: state=\"%s\"\n", SENSOR_ENTITIES[i], state.c_str());
+        if (state != "on" && state != "off") {
+            continue;  // unavailable/unknown -- keep the last known value
         }
-        String contact = hubitatAttrString(doc, "contact");
-        String normalized = contact;
-        normalized.trim();
-        normalized.toLowerCase();
-        // Logged because different Hubitat drivers have been seen to report
-        // this attribute with different casing/whitespace -- if a sensor
-        // never seems to register as open, check here first for what it's
-        // actually sending before assuming the sensor itself is at fault.
-        Serial.printf("Window sensor %s: contact=\"%s\"\n", SENSOR_IDS[i], contact.c_str());
         DataLock lock;
-        sensorOpen[i] = (normalized == "open");
+        sensorOpen[i] = (state == "on");
         anyOk = true;
     }
     return anyOk;

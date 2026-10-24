@@ -43,3 +43,27 @@ bool haFetchTemplate(const String &jinjaTemplate, JsonDocument &outDoc) {
     }
     return true;
 }
+
+bool haCallService(const char *domain, const char *service, JsonDocument &body) {
+    if (!haConfigured() || WiFi.status() != WL_CONNECTED) {
+        return false;
+    }
+
+    String payload;
+    serializeJson(body, payload);
+
+    WiFiClientSecure client;
+    client.setInsecure();  // see haFetchTemplate()
+    HTTPClient http;
+    http.begin(client, String(HA_BASE_URL) + "/api/services/" + domain + "/" + service);
+    http.addHeader("Authorization", String("Bearer ") + HA_TOKEN);
+    http.addHeader("Content-Type", "application/json");
+
+    int httpCode = http.POST(payload);
+    http.end();
+    if (httpCode != 200) {
+        Serial.printf("HA service %s.%s failed, HTTP %d\n", domain, service, httpCode);
+        return false;
+    }
+    return true;
+}
