@@ -6,6 +6,24 @@
 
 #include "secrets.h"
 
+namespace {
+String lastStatus = "no request yet";
+void setStatus(int code, const char *what) {
+    if (code == 200) {
+        lastStatus = String(what) + " OK";
+    } else if (code < 0) {
+        lastStatus = String(what) + " " + HTTPClient::errorToString(code);
+    } else {
+        lastStatus = String(what) + " HTTP " + code;
+    }
+    lastStatus += " heap " + String(ESP.getFreeHeap() / 1024) + "k";
+}
+}  // namespace
+
+String haLastStatus() {
+    return lastStatus;
+}
+
 bool haConfigured() {
     return HA_BASE_URL[0] != '\0';
 }
@@ -28,6 +46,7 @@ bool haFetchTemplate(const String &jinjaTemplate, JsonDocument &outDoc) {
     http.addHeader("Content-Type", "application/json");
 
     int httpCode = http.POST(body);
+    setStatus(httpCode, "tpl");
     if (httpCode != 200) {
         Serial.printf("HA template fetch failed, HTTP %d\n", httpCode);
         http.end();
@@ -60,6 +79,7 @@ bool haCallService(const char *domain, const char *service, JsonDocument &body) 
     http.addHeader("Content-Type", "application/json");
 
     int httpCode = http.POST(payload);
+    setStatus(httpCode, "svc");
     http.end();
     if (httpCode != 200) {
         Serial.printf("HA service %s.%s failed, HTTP %d\n", domain, service, httpCode);

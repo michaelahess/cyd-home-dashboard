@@ -13,6 +13,7 @@
 #include "light_sensor.h"
 #include "night_settings.h"
 #include "ota.h"
+#include "pages/camera_page.h"
 #include "pages/clock_weather_page.h"
 #include "pages/forecast_page.h"
 #include "pages/hvac_page.h"
@@ -27,6 +28,7 @@
 #include "tank_temps.h"
 #include "tesla.h"
 #include "touch.h"
+#include "unifi_camera.h"
 #include "uptime_kuma.h"
 #include "weather.h"
 #include "windows_status.h"
@@ -56,6 +58,7 @@ TankManager tankManager;
 HvacZonesManager hvacZonesManager;
 TeslaManager teslaManager;
 UptimeKumaManager uptimeKumaManager;
+UnifiCameraManager unifiCameraManager;
 WindowsStatusManager windowsStatusManager;
 Beeper beeper;
 StatusLed statusLed;
@@ -69,12 +72,13 @@ PumpPage pumpPage;
 TeslaPage teslaPage;
 HvacPage hvacPage;
 UptimePage uptimePage;
+CameraPage cameraPage;
 SettingsPage settingsPage;
 
 // Built at boot from whichever integrations secrets.h has configured (see
 // buildPageList()) -- a user who hasn't set up Home Assistant
 // just doesn't get those pages instead of seeing broken/empty ones.
-constexpr int MAX_PAGES = 9;
+constexpr int MAX_PAGES = 12;
 Page *pages[MAX_PAGES];
 int numPages = 0;
 int currentPage = 0;
@@ -99,7 +103,7 @@ void switchPage(int newIndex) {
     pages[currentPage]->onShow();
 }
 
-enum class PageId { CLOCK, FORECAST, SOLAR, TANKS1, TANKS2, PUMP, TESLA, HVAC, UPTIME, SETTINGS };
+enum class PageId { CLOCK, FORECAST, SOLAR, TANKS1, TANKS2, PUMP, TESLA, HVAC, CAMERA, UPTIME, SETTINGS };
 
 // The swipe/tap order for each profile. Reorder a list to change the order
 // pages appear in -- that's the whole mechanism, no other code needs to
@@ -109,12 +113,12 @@ enum class PageId { CLOCK, FORECAST, SOLAR, TANKS1, TANKS2, PUMP, TESLA, HVAC, U
 #if defined(CYD_PROFILE_SOLAR)
 constexpr PageId PAGE_ORDER[] = {
     PageId::CLOCK, PageId::FORECAST, PageId::SOLAR,    PageId::TESLA,
-    PageId::HVAC,  PageId::UPTIME,   PageId::SETTINGS,
+    PageId::HVAC,  PageId::CAMERA,   PageId::UPTIME,   PageId::SETTINGS,
 };
 #else
 constexpr PageId PAGE_ORDER[] = {
     PageId::CLOCK,   PageId::FORECAST, PageId::TANKS1,  PageId::TANKS2,    PageId::PUMP,
-    PageId::TESLA,   PageId::HVAC,     PageId::UPTIME,  PageId::SETTINGS,
+    PageId::TESLA,   PageId::HVAC,     PageId::CAMERA,  PageId::UPTIME,  PageId::SETTINGS,
 };
 #endif
 
@@ -156,6 +160,11 @@ void buildPageList() {
             case PageId::HVAC:
                 if (haConfigured()) {
                     pages[numPages++] = &hvacPage;
+                }
+                break;
+            case PageId::CAMERA:
+                if (UnifiCameraManager::configured()) {
+                    pages[numPages++] = &cameraPage;
                 }
                 break;
             case PageId::UPTIME:
@@ -204,6 +213,7 @@ void networkTask(void * /*pvParameters*/) {
             hvacZonesManager.loop();
             teslaManager.loop();
             uptimeKumaManager.loop();
+            unifiCameraManager.loop();
             windowsStatusManager.loop();
         }
         vTaskDelay(pdMS_TO_TICKS(200));
@@ -251,6 +261,7 @@ void setup() {
     teslaPage.begin(tft, teslaManager);
     hvacPage.begin(tft, hvacZonesManager, beeper, weatherManager);
     uptimePage.begin(tft, uptimeKumaManager);
+    cameraPage.begin(tft, unifiCameraManager);
     settingsPage.begin(tft, touch, beeper);
 
     buildPageList();
