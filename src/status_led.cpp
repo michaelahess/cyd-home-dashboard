@@ -22,6 +22,9 @@ constexpr int PWM_MAX = 255;
 }  // namespace
 
 void StatusLed::begin() {
+#if defined(CYD_BIG)
+    return;  // no RGB LED on this board; GPIO4 is touch SCL there
+#endif
     ledcAttach(PIN_R, PWM_FREQ_HZ, PWM_RES_BITS);
     ledcAttach(PIN_G, PWM_FREQ_HZ, PWM_RES_BITS);
     ledcAttach(PIN_B, PWM_FREQ_HZ, PWM_RES_BITS);
@@ -62,6 +65,9 @@ void StatusLed::apply() {
     // time LOW, so an "on" channel's duty (fraction of time HIGH) is
     // (1 - brightness); an "off" channel stays fully HIGH no matter what
     // brightness is set to.
+#if defined(CYD_BIG)
+    return;
+#endif
     int onDuty = static_cast<int>((1.0f - brightness) * PWM_MAX);
     ledcWrite(PIN_R, r ? onDuty : PWM_MAX);
     ledcWrite(PIN_G, g ? onDuty : PWM_MAX);

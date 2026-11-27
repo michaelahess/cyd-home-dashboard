@@ -1,3 +1,4 @@
+#if !defined(CYD_BIG)
 #include "touch.h"
 
 #include <Arduino.h>
@@ -171,3 +172,4 @@ TouchEvent TouchTap::poll() {
     wasTouched = touched;
     return ev;
 }
+#endif  // !CYD_BIG

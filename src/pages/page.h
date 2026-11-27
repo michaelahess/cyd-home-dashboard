@@ -25,4 +25,9 @@ public:
     // of hitting the intended button; that screen should offer its own
     // explicit way back (e.g. a Back button) when this is true.
     virtual bool blocksPageNav() const { return false; }
+
+    // True if this page draws straight to the physical panel (Mike Solar
+    // Big only), so main.cpp must NOT overwrite the panel with the 320x240
+    // UI sprite while it is showing.
+    virtual bool ownsDisplay() const { return false; }
 };

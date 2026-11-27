@@ -4,6 +4,7 @@
 #include <time.h>
 
 #include "beep.h"
+#include "big_display.h"
 #include "data_mutex.h"
 #include "display_settings.h"
 #include "fish_pump.h"
@@ -49,6 +50,14 @@ constexpr uint32_t LOOP_INTERVAL_MS = 20;
 constexpr uint32_t NETWORK_TASK_STACK_BYTES = 12288;
 
 TFT_eSPI tft;
+#if defined(CYD_BIG)
+// Mike Solar Big: pages draw the 320x240 UI into this off-screen sprite and
+// BigDisplay copies it to the 480x272 panel (see big_display.cpp).
+TFT_eSprite spr(&tft);
+TFT_eSPI &ui = spr;
+#else
+TFT_eSPI &ui = tft;
+#endif
 TouchTap touch;
 LightSensor lightSensor;
 WeatherManager weatherManager;
@@ -91,7 +100,11 @@ int currentPage = 0;
 constexpr int BOOT_BTN_PIN = 0;
 constexpr uint32_t BOOT_BTN_DEBOUNCE_MS = 50;
 
+#if defined(CYD_BIG)
+constexpr int BACKLIGHT_PIN = 1;
+#else
 constexpr int BACKLIGHT_PIN = 21;
+#endif
 constexpr int BACKLIGHT_FULL_DUTY = 255;
 
 bool isNightHour(int hour) {
@@ -100,6 +113,9 @@ bool isNightHour(int hour) {
 
 void switchPage(int newIndex) {
     currentPage = (newIndex + numPages) % numPages;
+#if defined(CYD_BIG)
+    BigDisplay::clear();  // wipe the margins / any full-screen camera frame
+#endif
     pages[currentPage]->onShow();
 }
 
@@ -227,10 +243,17 @@ void setup() {
     pinMode(BOOT_BTN_PIN, INPUT_PULLUP);
     bool flipped = DisplaySettings::flipped();
 
+#if defined(CYD_BIG)
+    BigDisplay::begin(flipped);
+    spr.setColorDepth(16);
+    spr.createSprite(BigDisplay::UI_W, BigDisplay::UI_H);  // lands in PSRAM
+    spr.fillSprite(TFT_BLACK);
+#else
     tft.init();
     tft.setRotation(flipped ? 3 : 1);  // landscape; BOOT button / Settings page toggles this
     tft.invertDisplay(true);  // this panel batch renders colors inverted otherwise
     tft.fillScreen(TFT_BLACK);
+#endif
 
     ledcAttach(BACKLIGHT_PIN, 20000, 8);
     ledcWrite(BACKLIGHT_PIN, BACKLIGHT_FULL_DUTY);
@@ -249,20 +272,20 @@ void setup() {
     statusLed.begin();
 
 #if defined(CYD_PROFILE_SOLAR)
-    clockWeatherPage.begin(tft, weatherManager, &homePowerManager);
+    clockWeatherPage.begin(ui, weatherManager, &homePowerManager);
 #else
-    clockWeatherPage.begin(tft, weatherManager);
+    clockWeatherPage.begin(ui, weatherManager);
 #endif
-    forecastPage.begin(tft, weatherManager);
-    solarPage.begin(tft, homePowerManager);
-    tankPage1.begin(tft, tankManager, 0, 4);
-    tankPage2.begin(tft, tankManager, 4, 3);
-    pumpPage.begin(tft, fishPumpManager);
-    teslaPage.begin(tft, teslaManager);
-    hvacPage.begin(tft, hvacZonesManager, beeper, weatherManager);
-    uptimePage.begin(tft, uptimeKumaManager);
-    cameraPage.begin(tft, unifiCameraManager);
-    settingsPage.begin(tft, touch, beeper);
+    forecastPage.begin(ui, weatherManager);
+    solarPage.begin(ui, homePowerManager);
+    tankPage1.begin(ui, tankManager, 0, 4);
+    tankPage2.begin(ui, tankManager, 4, 3);
+    pumpPage.begin(ui, fishPumpManager);
+    teslaPage.begin(ui, teslaManager);
+    hvacPage.begin(ui, hvacZonesManager, beeper, weatherManager);
+    uptimePage.begin(ui, uptimeKumaManager);
+    cameraPage.begin(ui, unifiCameraManager);
+    settingsPage.begin(ui, touch, beeper);
 
     buildPageList();
     pages[currentPage]->onShow();
@@ -353,4 +376,9 @@ void loop() {
     }
 
     pages[currentPage]->loop();
+#if defined(CYD_BIG)
+    if (!pages[currentPage]->ownsDisplay()) {
+        BigDisplay::present(spr.getPointer());
+    }
+#endif
 }

@@ -16,6 +16,13 @@ public:
     void onShow() override;
     void loop() override;
     void onTap(int x, int y) override;
+    bool ownsDisplay() const override {
+#if defined(CYD_BIG)
+        return true;  // full-screen frame drawn straight to the 480x272 panel
+#else
+        return false;
+#endif
+    }
 
 private:
     TFT_eSPI *tft = nullptr;

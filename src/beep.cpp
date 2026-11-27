@@ -21,7 +21,9 @@ int Beeper::currentDuty() const {
 }
 
 void Beeper::begin() {
+#if !defined(CYD_BIG)  // no speaker on this board; GPIO26 is flash there
     ledcAttach(BEEP_PIN, 1800, BEEP_RES_BITS);
+#endif
     Preferences prefs;
     prefs.begin("cyd", true);
     volumePct = prefs.getInt("beepvol", DEFAULT_VOLUME_PERCENT);
@@ -65,8 +67,10 @@ void Beeper::startSequence(const Note *notes, int count) {
 void Beeper::startNote(int index) {
     noteIndex = index;
     noteStartedMs = millis();
+#if !defined(CYD_BIG)
     ledcChangeFrequency(BEEP_PIN, sequence[index].freqHz, BEEP_RES_BITS);
     ledcWrite(BEEP_PIN, currentDuty());
+#endif
 }
 
 void Beeper::loop() {
@@ -78,7 +82,9 @@ void Beeper::loop() {
         if (next < sequenceLen) {
             startNote(next);
         } else {
+#if !defined(CYD_BIG)
             ledcWrite(BEEP_PIN, 0);
+#endif
             noteIndex = -1;
         }
     }

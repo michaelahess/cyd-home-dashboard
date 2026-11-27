@@ -9,7 +9,9 @@ namespace {
 volatile bool updating = false;
 bool started = false;
 
-#if defined(CYD_PROFILE_SOLAR)
+#if defined(CYD_BIG)
+constexpr const char *HOSTNAME = "cyd-solar-big";
+#elif defined(CYD_PROFILE_SOLAR)
 constexpr const char *HOSTNAME = "cyd-solar";
 #else
 constexpr const char *HOSTNAME = "cyd-fish";

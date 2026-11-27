@@ -2,6 +2,12 @@
 
 #include <TJpg_Decoder.h>
 
+#if defined(CYD_BIG)
+#include <Arduino_GFX_Library.h>
+
+#include "../big_display.h"
+#endif
+
 namespace {
 TFT_eSPI *g_tft = nullptr;
 int g_offsetX = 0;
@@ -42,17 +48,80 @@ bool tftOutput(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
     g_tft->pushImage(x + g_offsetX, y + g_offsetY, w, h, bitmap);
     return true;
 }
+
+#if defined(CYD_BIG)
+// Full-screen path for the 480x272 panel. Frames are 640x360 (16:9), so shrink
+// 4:3 by dropping every 4th row/column -- blocks arrive at multiples of 8, so
+// the mapping stays consistent across block boundaries. Anything already
+// <= 480 wide is drawn 1:1.
+bool g_shrink = false;
+int g_destX = 0;
+int g_destY = 0;
+
+bool bigOutput(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t *bitmap) {
+    Arduino_GFX *cv = BigDisplay::canvas();
+    if (cv == nullptr) {
+        return false;
+    }
+    if (!g_shrink) {
+        for (uint32_t i = 0; i < static_cast<uint32_t>(w) * h; i++) {
+            bitmap[i] = enhance(bitmap[i]);
+        }
+        cv->draw16bitBeRGBBitmap(x + g_destX, y + g_destY, bitmap, w, h);
+        return true;
+    }
+    static uint16_t out[16 * 16];
+    int ow = 0, oh = 0;
+    for (int sy = 0; sy < h; sy++) {
+        if (((y + sy) & 3) == 3) {
+            continue;
+        }
+        ow = 0;
+        for (int sx = 0; sx < w; sx++) {
+            if (((x + sx) & 3) == 3) {
+                continue;
+            }
+            out[oh * 12 + ow] = enhance(bitmap[sy * w + sx]);
+            ow++;
+        }
+        oh++;
+    }
+    // draw row by row since `out` is packed with a fixed 12-px stride
+    for (int r = 0; r < oh; r++) {
+        cv->draw16bitBeRGBBitmap(x * 3 / 4 + g_destX, y * 3 / 4 + r + g_destY, &out[r * 12], ow, 1);
+    }
+    return true;
+}
+#endif
 }  // namespace
 
 void CameraPage::begin(TFT_eSPI &tftRef, UnifiCameraManager &camRef) {
     tft = &tftRef;
     cam = &camRef;
     g_tft = &tftRef;
+#if defined(CYD_BIG)
+    TJpgDec.setCallback(bigOutput);
+#else
     TJpgDec.setCallback(tftOutput);
+#endif
     TJpgDec.setSwapBytes(true);  // TFT_eSPI expects byte-swapped RGB565 from pushImage
 }
 
 void CameraPage::onShow() {
+#if defined(CYD_BIG)
+    BigDisplay::clear();
+    Arduino_GFX *cv = BigDisplay::canvas();
+    cv->setTextColor(0xFFFF, 0x0000);
+    cv->setTextSize(3);
+    cv->setCursor(150, 125);
+    cv->print("Connecting...");
+    BigDisplay::flush();
+    lastSeq = 0;
+    gotFrame = false;
+    lastStatusDrawn = "";
+    cam->markViewed(camIndex);
+    return;
+#endif
     tft->fillScreen(TFT_BLACK);
     tft->setTextColor(TFT_WHITE, TFT_BLACK);
     tft->setTextDatum(MC_DATUM);
@@ -73,6 +142,20 @@ void CameraPage::onTap(int /*x*/, int /*y*/) {
 }
 
 void CameraPage::drawStatus(const String &s) {
+#if defined(CYD_BIG)
+    if (s == lastStatusDrawn) {
+        return;
+    }
+    lastStatusDrawn = s;
+    Arduino_GFX *cv = BigDisplay::canvas();
+    cv->fillRect(0, 256, BigDisplay::PANEL_W, 16, 0x0000);
+    cv->setTextColor(0x7BEF, 0x0000);
+    cv->setTextSize(2);
+    cv->setCursor(4, 257);
+    cv->print(String(UnifiCameraManager::cameraName(camIndex)) + "  " + s);
+    BigDisplay::flush();
+    return;
+#endif
     // Small strip at the bottom: camera name + fetch status, so a failing
     // fetch is visible on the screen instead of a silently frozen image.
     if (s == lastStatusDrawn) {
@@ -92,6 +175,35 @@ void CameraPage::drawFrame() {
         drawStatus("bad image");
         return;
     }
+#if defined(CYD_BIG)
+    {
+        // Smallest power-of-two JPEG shrink that is <= 640 wide, then 3/4 if
+        // still wider than the 480px panel.
+        int sc = 1;
+        while (sc < 8 && w / sc > 640) {
+            sc *= 2;
+        }
+        TJpgDec.setJpgScale(sc);
+        int dw = w / sc, dh = h / sc;
+        g_shrink = dw > BigDisplay::PANEL_W;
+        int fw = g_shrink ? dw * 3 / 4 : dw;
+        int fh = g_shrink ? dh * 3 / 4 : dh;
+        g_destX = (BigDisplay::PANEL_W - fw) / 2;
+        g_destY = (BigDisplay::PANEL_H - fh) / 2;
+        if (g_destX < 0) g_destX = 0;
+        if (g_destY < 0) g_destY = 0;
+        if (!gotFrame) {
+            BigDisplay::clear();
+            lastStatusDrawn = "";
+            gotFrame = true;
+        }
+        TJpgDec.drawJpg(0, 0, jpeg, jpegLen);
+        drawStatus(cam->lastStatus());  // overlay after the image
+        lastStatusDrawn = "";            // force re-draw next frame (image covered it)
+        BigDisplay::flush();
+        return;
+    }
+#endif
     // Smallest power-of-two shrink that fits the usable area (320x224,
     // leaving a 16px strip for the status line).
     int scale = 1;

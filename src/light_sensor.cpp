@@ -19,11 +19,17 @@ constexpr bool DARK_IS_BELOW_THRESHOLD = false;  // flip back if a given board's
 }  // namespace
 
 void LightSensor::begin() {
+#if defined(CYD_BIG)
+    return;  // no LDR on this board; GPIO34 is PSRAM there
+#endif
     pinMode(LDR_PIN, INPUT);
     smoothed = analogRead(LDR_PIN);
 }
 
 void LightSensor::loop() {
+#if defined(CYD_BIG)
+    return;
+#endif
     unsigned long now = millis();
     if (now - lastSampleMs < SAMPLE_INTERVAL_MS) {
         return;
