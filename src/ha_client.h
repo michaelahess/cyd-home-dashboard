@@ -17,3 +17,7 @@ bool haCallService(const char *domain, const char *service, JsonDocument &body);
 // -- a user without it can leave HA_BASE_URL "" and the tank/pump pages
 // simply won't fetch or appear.
 bool haConfigured();
+
+// Result of the most recent HA request ("OK", "HTTP 401", "conn refused", ...),
+// shown on the System Status page for diagnosing connectivity.
+String haLastStatus();

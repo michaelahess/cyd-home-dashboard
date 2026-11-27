@@ -1,5 +1,7 @@
 #include "uptime_page.h"
 
+#include "../ha_client.h"
+
 namespace {
 constexpr uint32_t REDRAW_INTERVAL_MS = 1000;
 }  // namespace
@@ -66,6 +68,14 @@ void UptimePage::drawAll() {
     tft->setTextDatum(TL_DATUM);
 }
 
+void UptimePage::drawHaStatus() {
+    tft->fillRect(0, 222, 320, 18, TFT_BLACK);
+    tft->setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tft->setTextDatum(BC_DATUM);
+    tft->drawString("HA: " + lastHaStatus, 160, 239, 2);
+    tft->setTextDatum(TL_DATUM);
+}
+
 void UptimePage::loop() {
     uint32_t now = millis();
     if (hasLastDrawn && (now - lastDrawMs) < REDRAW_INTERVAL_MS) {
@@ -85,6 +95,13 @@ void UptimePage::loop() {
         }
     }
 
+    String haStatus = haLastStatus();
+    if (hasLastDrawn && haStatus != lastHaStatus) {
+        lastHaStatus = haStatus;
+        drawHaStatus();
+    }
+    lastHaStatus = haStatus;
+
     bool changed = !hasLastDrawn || configLoaded != lastConfigLoaded || up != lastUp || down != lastDown ||
                    downList != lastDownList;
     if (!changed) {
@@ -96,4 +113,5 @@ void UptimePage::loop() {
     lastDown = down;
     lastDownList = downList;
     drawAll();
+    drawHaStatus();
 }

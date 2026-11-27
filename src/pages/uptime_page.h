@@ -24,6 +24,8 @@ private:
     int lastUp = -1;
     int lastDown = -1;
     String lastDownList;
+    String lastHaStatus;
 
     void drawAll();
+    void drawHaStatus();
 };
